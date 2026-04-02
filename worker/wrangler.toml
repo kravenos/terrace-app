@@ -4,4 +4,5 @@ compatibility_date = "2026-04-02"
 
 [vars]
 AIRTABLE_TABLE = "Terraces"
+AIRTABLE_FILTER = ""
 

@@ -30,13 +30,14 @@ export default {
     const token = env.AIRTABLE_TOKEN;
     const baseId = env.AIRTABLE_BASE_ID;
     const table = env.AIRTABLE_TABLE || "Terraces";
+    const filter = env.AIRTABLE_FILTER || "";
 
     if (!token) return json({ error: "Missing AIRTABLE_TOKEN" }, { status: 500 });
     if (!baseId) return json({ error: "Missing AIRTABLE_BASE_ID" }, { status: 500 });
 
     const airtableUrl = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}`);
     airtableUrl.searchParams.set("maxRecords", "100");
-    airtableUrl.searchParams.set("filterByFormula", "{active}=1");
+    if (filter) airtableUrl.searchParams.set("filterByFormula", filter);
 
     let res;
     try {
@@ -48,7 +49,20 @@ export default {
       return json({ error: "Failed to reach Airtable" }, { status: 502 });
     }
 
-    if (!res.ok) return json({ error: `Airtable error (${res.status})` }, { status: 502 });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      return json(
+        {
+          error: `Airtable error (${res.status})`,
+          details: txt ? txt.slice(0, 2000) : undefined,
+          hint:
+            res.status === 400
+              ? "Check AIRTABLE_BASE_ID / AIRTABLE_TABLE / AIRTABLE_FILTER. If you used a filter, try removing it."
+              : undefined,
+        },
+        { status: 502 },
+      );
+    }
 
     const data = await res.json();
     const records = Array.isArray(data?.records) ? data.records : [];
