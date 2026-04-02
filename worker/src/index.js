@@ -34,6 +34,16 @@ export default {
 
     if (!token) return json({ error: "Missing AIRTABLE_TOKEN" }, { status: 500 });
     if (!baseId) return json({ error: "Missing AIRTABLE_BASE_ID" }, { status: 500 });
+    const tokenTrimmed = typeof token === "string" ? token.trim() : "";
+    if (!/^pat[a-zA-Z0-9_.-]{10,}$/.test(tokenTrimmed)) {
+      return json(
+        {
+          error: "Invalid AIRTABLE_TOKEN",
+          hint: "AIRTABLE_TOKEN should start with pat… (no quotes, no spaces). Re-set it with `wrangler secret put AIRTABLE_TOKEN`.",
+        },
+        { status: 500 },
+      );
+    }
     if (typeof baseId !== "string" || !/^app[a-zA-Z0-9]{10,}$/.test(baseId.trim())) {
       return json(
         {
@@ -51,7 +61,7 @@ export default {
     let res;
     try {
       res = await fetch(airtableUrl.toString(), {
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${tokenTrimmed}` },
         cf: { cacheTtl: 60, cacheEverything: true },
       });
     } catch {
@@ -80,10 +90,13 @@ export default {
             table,
             filterEnabled: Boolean(filter),
             baseIdPrefix: typeof baseId === "string" ? baseId.slice(0, 3) : null,
+            tokenPrefix: tokenTrimmed ? tokenTrimmed.slice(0, 3) : null,
           },
           hint:
             res.status === 400
               ? "Check AIRTABLE_BASE_ID / AIRTABLE_TABLE / AIRTABLE_FILTER. If you used a filter, try removing it."
+              : res.status === 401
+                ? "Token rejected. Re-set AIRTABLE_TOKEN and ensure it has access to this base with records:read scope."
               : undefined,
         },
         { status: 502 },
