@@ -34,8 +34,17 @@ export default {
 
     if (!token) return json({ error: "Missing AIRTABLE_TOKEN" }, { status: 500 });
     if (!baseId) return json({ error: "Missing AIRTABLE_BASE_ID" }, { status: 500 });
+    if (typeof baseId !== "string" || !/^app[a-zA-Z0-9]{10,}$/.test(baseId.trim())) {
+      return json(
+        {
+          error: "Invalid AIRTABLE_BASE_ID",
+          hint: "AIRTABLE_BASE_ID should look like appXXXXXXXXXXXXXX (no quotes, no spaces). Re-set it with `wrangler secret put AIRTABLE_BASE_ID`.",
+        },
+        { status: 500 },
+      );
+    }
 
-    const airtableUrl = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}`);
+    const airtableUrl = new URL(`https://api.airtable.com/v0/${baseId.trim()}/${encodeURIComponent(table)}`);
     airtableUrl.searchParams.set("maxRecords", "100");
     if (filter) airtableUrl.searchParams.set("filterByFormula", filter);
 
