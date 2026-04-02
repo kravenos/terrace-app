@@ -12,10 +12,12 @@
   .logo { font-size: 1rem; font-weight: 700; color: #f5a623; letter-spacing: -0.02em; }
   .logo span { color: #7a7aaa; font-weight: 400; }
 
-  .time-bar { padding: 16px 20px; background: #13131a; border-bottom: 1px solid #1e1e28; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .time-bar { padding: 14px 20px; background: #13131a; border-bottom: 1px solid #1e1e28; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .time-bar label { font-size: 0.75rem; color: #7a7aaa; white-space: nowrap; }
   input[type="datetime-local"] { background: #18181f; border: 1px solid #2a2a3a; border-radius: 8px; color: #e4e4ee; font-size: 0.85rem; padding: 7px 12px; outline: none; font-family: inherit; flex: 1; min-width: 180px; }
   input[type="datetime-local"]:focus { border-color: #f5a623; }
+  select { background: #18181f; border: 1px solid #2a2a3a; border-radius: 8px; color: #7a7aaa; font-size: 0.8rem; padding: 7px 10px; outline: none; font-family: inherit; cursor: pointer; }
+  select:focus { border-color: #f5a623; }
   .calc-btn { background: #f5a623; color: #1a0e00; border: none; border-radius: 8px; padding: 8px 18px; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; font-family: inherit; }
   .calc-btn:hover { opacity: 0.88; }
   .now-btn { background: #1e1e28; color: #7a7aaa; border: 1px solid #2a2a3a; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; font-family: inherit; }
@@ -67,6 +69,33 @@
 <div class="time-bar">
   <label>Check for:</label>
   <input type="datetime-local" id="dt">
+  <select id="tz-offset" title="Your local UTC offset">
+    <option value="-12">UTC-12</option>
+    <option value="-11">UTC-11</option>
+    <option value="-10">UTC-10</option>
+    <option value="-9">UTC-9</option>
+    <option value="-8">UTC-8</option>
+    <option value="-7">UTC-7</option>
+    <option value="-6">UTC-6</option>
+    <option value="-5">UTC-5</option>
+    <option value="-4">UTC-4</option>
+    <option value="-3">UTC-3</option>
+    <option value="-2">UTC-2</option>
+    <option value="-1">UTC-1</option>
+    <option value="0">UTC+0</option>
+    <option value="1">UTC+1</option>
+    <option value="2" selected>UTC+2 (Amsterdam summer)</option>
+    <option value="3">UTC+3</option>
+    <option value="4">UTC+4</option>
+    <option value="5">UTC+5</option>
+    <option value="6">UTC+6</option>
+    <option value="7">UTC+7</option>
+    <option value="8">UTC+8</option>
+    <option value="9">UTC+9</option>
+    <option value="10">UTC+10</option>
+    <option value="11">UTC+11</option>
+    <option value="12">UTC+12</option>
+  </select>
   <button class="now-btn" onclick="setNow()">Now</button>
   <button class="calc-btn" onclick="run()">Find sunny terraces</button>
 </div>
@@ -86,89 +115,84 @@
 const AIRTABLE_TOKEN   = 'patg7yR2DQsMb6BpS.f98e7570cf71e68555e298d78a11bd346053f175beaf78413d4a07b636152f14';
 const AIRTABLE_BASE_ID = 'appqgDqaabs6MjuAd';
 const AIRTABLE_TABLE   = 'Terraces';
-
 const D = Math.PI/180, R = 180/Math.PI;
 
-// ── THE FIX: use the browser's own UTC offset for the chosen local time ──────
-// This avoids all DST hardcoding and works correctly on Windows
-function localToUTC(yr, mo, dy, lh, lm) {
-  // Create a Date object representing this local wall-clock time
-  const local = new Date(yr, mo-1, dy, lh, lm, 0);
-  // getTimezoneOffset() returns minutes BEHIND UTC (negative for UTC+2)
-  const offsetMin = local.getTimezoneOffset(); // e.g. -120 for CEST
-  const utcMs = local.getTime() + offsetMin * 60000;
-  const utc = new Date(utcMs);
-  return {
-    utcH:  utc.getUTCHours(),
-    utcM:  utc.getUTCMinutes(),
-    utcD:  utc.getUTCDate(),
-    utcMo: utc.getUTCMonth() + 1,
-    utcYr: utc.getUTCFullYear(),
-    offsetHours: -offsetMin / 60
-  };
+// ── UTC offset from dropdown ──────────────────────────────────────────────────
+function getOffset() {
+  return parseInt(document.getElementById('tz-offset').value);
 }
 
-// ── Julian Day from UTC components ───────────────────────────────────────────
+// Auto-detect Amsterdam DST and set dropdown on load
+function autoSetOffset() {
+  const now = new Date();
+  // Last Sunday of March/October
+  function lastSun(y, m) {
+    const d = new Date(Date.UTC(y, m, 0));
+    return d.getUTCDate() - d.getUTCDay();
+  }
+  const yr = now.getFullYear();
+  const mo = now.getMonth() + 1; // 1-based
+  const dy = now.getDate();
+  const hr = now.getHours();
+  const ms = lastSun(yr, 3), os = lastSun(yr, 10);
+  let off = 1;
+  if (mo > 3 && mo < 10) off = 2;
+  else if (mo === 3)  off = (dy > ms || (dy === ms && hr >= 2)) ? 2 : 1;
+  else if (mo === 10) off = (dy > os || (dy === os && hr >= 3)) ? 1 : 2;
+  document.getElementById('tz-offset').value = String(off);
+}
+
+// ── Julian Day ────────────────────────────────────────────────────────────────
 function toJD(y, mo, d, h, mn) {
   const a = Math.floor((14-mo)/12), yy = y+4800-a, mm = mo+12*a-3;
   const jdn = d+Math.floor((153*mm+2)/5)+365*yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)-32045;
   return jdn - 0.5 + h/24 + mn/1440;
 }
 
-// ── NOAA sun position — takes lat/lng and UTC time explicitly ────────────────
-function sunPos(lat, lng, utcYr, utcMo, utcD, utcH, utcM) {
+// ── NOAA sun position — pure UTC in, altitude/azimuth out ────────────────────
+function sunPosUTC(lat, lng, utcYr, utcMo, utcD, utcH, utcM) {
   const j  = toJD(utcYr, utcMo, utcD, utcH, utcM);
   const jc = (j - 2451545.0) / 36525;
-
   const L0 = (280.46646+jc*(36000.76983+jc*0.0003032))%360;
   const M  = 357.52911+jc*(35999.05029-0.0001537*jc);
   const C  = Math.sin(M*D)*(1.914602-jc*(0.004817+0.000014*jc))
            + Math.sin(2*M*D)*(0.019993-0.000101*jc)
            + Math.sin(3*M*D)*0.000289;
-  const sl = L0+C;
-  const om = 125.04-1934.136*jc;
-  const la = sl-0.00569-0.00478*Math.sin(om*D);
+  const sl = L0+C, om = 125.04-1934.136*jc, la = sl-0.00569-0.00478*Math.sin(om*D);
   const e0 = 23+(26+(21.448-jc*(46.815+jc*(0.00059-jc*0.001813)))/60)/60;
   const ep = e0+0.00256*Math.cos(om*D);
   const dc = Math.asin(Math.sin(ep*D)*Math.sin(la*D))*R;
-
-  const t2  = Math.tan((ep/2)*D)**2;
-  const eot = 4*R*(t2*Math.sin(2*L0*D)
-    - 2*0.016708634*Math.sin(M*D)
-    + 4*0.016708634*t2*Math.sin(M*D)*Math.cos(2*L0*D)
-    - 0.5*t2**2*Math.sin(4*L0*D)
-    - 1.25*0.016708634**2*Math.sin(2*M*D));
-
-  const tst = (utcH*60 + utcM + eot + 4*lng + 1440) % 1440;
-  let ha = tst/4 - 180;
-  if (ha < -180) ha += 360;
-
-  const lr=lat*D, dr=dc*D, hr=ha*D;
-  const cz = Math.sin(lr)*Math.sin(dr)+Math.cos(lr)*Math.cos(dr)*Math.cos(hr);
-  const ze = Math.acos(Math.min(1,Math.max(-1,cz)))*R;
-  const alt = 90-ze;
-
-  const ca = (Math.sin(lr)*cz-Math.sin(dr))/(Math.cos(lr)*Math.sin(ze*D));
-  let az = Math.acos(Math.min(1,Math.max(-1,ca)))*R;
-  if (ha > 0) az = 360-az;
-
+  const t2 = Math.tan((ep/2)*D)**2;
+  const eot = 4*R*(t2*Math.sin(2*L0*D)-2*0.016708634*Math.sin(M*D)+4*0.016708634*t2*Math.sin(M*D)*Math.cos(2*L0*D)-0.5*t2**2*Math.sin(4*L0*D)-1.25*0.016708634**2*Math.sin(2*M*D));
+  const tst = (utcH*60+utcM+eot+4*lng+1440)%1440;
+  let ha = tst/4-180; if (ha<-180) ha+=360;
+  const lr=lat*D,dr=dc*D,hr=ha*D;
+  const cz=Math.sin(lr)*Math.sin(dr)+Math.cos(lr)*Math.cos(dr)*Math.cos(hr);
+  const ze=Math.acos(Math.min(1,Math.max(-1,cz)))*R;
+  const alt=90-ze;
+  const ca=(Math.sin(lr)*cz-Math.sin(dr))/(Math.cos(lr)*Math.sin(ze*D));
+  let az=Math.acos(Math.min(1,Math.max(-1,ca)))*R;
+  if (ha>0) az=360-az;
   return {alt, az};
 }
 
-// Convenience wrapper: takes local time, converts to UTC, calls sunPos
+// Local time → UTC using explicit offset, then call sunPosUTC
 function sunPosLocal(lat, lng, yr, mo, dy, lh, lm) {
-  const u = localToUTC(yr, mo, dy, lh, lm);
-  return sunPos(lat, lng, u.utcYr, u.utcMo, u.utcD, u.utcH, u.utcM);
+  const off = getOffset();
+  let utcH = lh - off, utcD = dy, utcMo = mo, utcYr = yr;
+  if (utcH < 0)  { utcH += 24; utcD--; }
+  if (utcH >= 24){ utcH -= 24; utcD++; }
+  return sunPosUTC(lat, lng, utcYr, utcMo, utcD, utcH, lm);
 }
 
 function findSunset(lat, lng, yr, mo, dy) {
   let last = sunPosLocal(lat, lng, yr, mo, dy, 12, 0).alt;
-  for (let m = 1; m <= 720; m++) {
-    const h = 12+Math.floor(m/60), mn = m%60;
-    if (h >= 24) break;
+  for (let m=1; m<=720; m++) {
+    const h=12+Math.floor(m/60), mn=m%60;
+    if (h>=24) break;
     const a = sunPosLocal(lat, lng, yr, mo, dy, h, mn).alt;
-    if (last > 0 && a <= 0) return {h, mn};
-    last = a;
+    if (last>0 && a<=0) return {h, mn};
+    last=a;
   }
   return null;
 }
@@ -177,216 +201,183 @@ function compassDir(az) {
   return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(az/22.5)%16];
 }
 
-// ── Building shade + cloud rating ────────────────────────────────────────────
+// ── Building shade + cloud cover rating ──────────────────────────────────────
 function isBuildingShaded(sunAlt, sunAz, shadeDir, shadeMinAlt) {
   if (!shadeDir || !shadeMinAlt) return false;
-  let diff = Math.abs(sunAz - shadeDir);
-  if (diff > 180) diff = 360-diff;
-  return diff <= 45 && sunAlt < shadeMinAlt;
+  let diff = Math.abs(sunAz-shadeDir); if (diff>180) diff=360-diff;
+  return diff<=45 && sunAlt<shadeMinAlt;
 }
 
 function rateTerrace(sunAlt, sunAz, cloudCover, facing, shadeDir, shadeMinAlt) {
-  if (sunAlt <= 0) return {label:'down', reason:'Sun below horizon'};
-  if (sunAlt < 5)  return {label:'shaded', reason:'Sun too low'};
-
+  if (sunAlt<=0) return {label:'down',   reason:'Sun below horizon'};
+  if (sunAlt<5)  return {label:'shaded', reason:'Sun too low'};
   if (isBuildingShaded(sunAlt, sunAz, shadeDir, shadeMinAlt))
-    return {label:'shaded', reason:`Building blocks sun until it rises above ${shadeMinAlt}°`};
-
-  let diff = Math.abs(sunAz - facing);
-  if (diff > 180) diff = 360-diff;
-
-  let base = diff <= 45 ? 'sunny' : diff <= 70 ? 'partial' : 'shaded';
-  if (base === 'shaded') return {label:'shaded', reason:'Sun is behind this terrace'};
-
-  if (cloudCover >= 80) return {label:'shaded', reason:'Heavy cloud cover'};
-  if (cloudCover >= 50 && base === 'partial') return {label:'shaded', reason:`Partial angle + ${cloudCover}% cloud`};
-  if (cloudCover >= 50) return {label:'partial', reason:`${cloudCover}% cloud cover`};
-
-  return {label: base, reason: base === 'sunny' ? 'Direct sunlight' : 'Partial sunlight'};
+    return {label:'shaded', reason:`Building blocks sun below ${shadeMinAlt}°`};
+  let diff=Math.abs(sunAz-facing); if (diff>180) diff=360-diff;
+  const base = diff<=45?'sunny': diff<=70?'partial':'shaded';
+  if (base==='shaded') return {label:'shaded', reason:'Sun is behind this terrace'};
+  if (cloudCover>=80) return {label:'shaded', reason:'Heavy cloud cover'};
+  if (cloudCover>=50 && base==='partial') return {label:'shaded', reason:`Partial angle + ${cloudCover}% cloud`};
+  if (cloudCover>=50) return {label:'partial', reason:`${cloudCover}% cloud cover`};
+  return {label:base, reason:base==='sunny'?'Direct sunlight':'Partial sunlight'};
 }
 
-// ── Airtable ─────────────────────────────────────────────────────────────────
+// ── Airtable ──────────────────────────────────────────────────────────────────
 async function fetchTerraces() {
-  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}?filterByFormula={active}=1&maxRecords=100`;
-  const res = await fetch(url, {headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`}});
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Airtable ${res.status}: ${txt}`);
-  }
-  const data = await res.json();
-  return data.records.map(r => ({
-    name:               r.fields.name || r.fields.Name || '?',
-    lat:                parseFloat(r.fields.lat)  || 0,
-    lng:                parseFloat(r.fields.lng)  || 0,
-    facing:             parseInt(r.fields.facing) || 180,
-    shade_direction:    parseInt(r.fields.shade_direction)    || 0,
-    shade_min_altitude: parseInt(r.fields.shade_min_altitude) || 0,
-    description:        r.fields.description || '',
+  const url=`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}?filterByFormula={active}=1&maxRecords=100`;
+  const res=await fetch(url,{headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`}});
+  if (!res.ok) { const t=await res.text(); throw new Error(`Airtable ${res.status}: ${t}`); }
+  const data=await res.json();
+  return data.records.map(r=>({
+    name:               r.fields.name||r.fields.Name||'?',
+    lat:                parseFloat(r.fields.lat)||0,
+    lng:                parseFloat(r.fields.lng)||0,
+    facing:             parseInt(r.fields.facing)||180,
+    shade_direction:    parseInt(r.fields.shade_direction)||0,
+    shade_min_altitude: parseInt(r.fields.shade_min_altitude)||0,
+    description:        r.fields.description||'',
   }));
 }
 
-// ── Open-Meteo — fetch for a specific lat/lng ─────────────────────────────────
+// ── Open-Meteo ────────────────────────────────────────────────────────────────
 async function fetchWeather(lat, lng, isoDatetime) {
-  const date = isoDatetime.slice(0,10);
-  const hour = parseInt(isoDatetime.slice(11,13));
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloudcover,weathercode&start_date=${date}&end_date=${date}&timezone=auto`;
+  const date=isoDatetime.slice(0,10);
+  const hour=parseInt(isoDatetime.slice(11,13));
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloudcover,weathercode&start_date=${date}&end_date=${date}&timezone=auto`;
   try {
-    const res = await fetch(url);
-    if (!res.ok) return {cloudCover:0, description:'Weather unavailable'};
-    const data = await res.json();
-    const idx = Math.min(hour, data.hourly.cloudcover.length-1);
-    const cc  = data.hourly.cloudcover[idx] ?? 0;
-    const wc  = data.hourly.weathercode[idx] ?? 0;
-    return {cloudCover: cc, description: weatherDesc(wc, cc)};
-  } catch {
-    return {cloudCover:0, description:'Weather unavailable'};
-  }
+    const res=await fetch(url); if (!res.ok) return {cloudCover:0,description:'N/A'};
+    const data=await res.json();
+    const idx=Math.min(hour, data.hourly.cloudcover.length-1);
+    return {cloudCover:data.hourly.cloudcover[idx]??0, description:weatherDesc(data.hourly.weathercode[idx]??0, data.hourly.cloudcover[idx]??0)};
+  } catch { return {cloudCover:0, description:'N/A'}; }
 }
 
 function weatherDesc(code, cc) {
-  if (code === 0) return 'Clear sky';
-  if (code <= 3)  return cc > 50 ? 'Mostly cloudy' : 'Partly cloudy';
-  if (code <= 48) return 'Foggy';
-  if (code <= 67) return 'Rain';
-  if (code <= 77) return 'Snow';
-  if (code <= 82) return 'Showers';
+  if (code===0) return 'Clear sky';
+  if (code<=3)  return cc>50?'Mostly cloudy':'Partly cloudy';
+  if (code<=48) return 'Foggy';
+  if (code<=67) return 'Rain';
+  if (code<=77) return 'Snow';
+  if (code<=82) return 'Showers';
   return 'Stormy';
 }
 
-// ── Group terraces by city (cluster by coordinates) ──────────────────────────
 function cityName(lat, lng) {
-  if (lat > 52 && lat < 53 && lng > 4 && lng < 6)   return 'Amsterdam';
-  if (lat > 41 && lat < 42 && lng > 1 && lng < 3)   return 'Barcelona';
-  if (lat > 45 && lat < 46 && lng > 9 && lng < 10)  return 'Milan';
+  if (lat>52&&lat<53&&lng>4&&lng<6)  return 'Amsterdam';
+  if (lat>41&&lat<42&&lng>1&&lng<3)  return 'Barcelona';
+  if (lat>45&&lat<46&&lng>9&&lng<10) return 'Milan';
   return 'Other';
 }
 
-// ── UI ────────────────────────────────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────────────────────────
 function setNow() {
-  const now = new Date();
-  const p = n => String(n).padStart(2,'0');
-  document.getElementById('dt').value =
+  const now=new Date(), p=n=>String(n).padStart(2,'0');
+  document.getElementById('dt').value=
     `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}T${p(now.getHours())}:${p(now.getMinutes())}`;
 }
 
-const ORDER = ['sunny','partial','shaded','down'];
+const ORDER=['sunny','partial','shaded','down'];
 
+// ── Main ──────────────────────────────────────────────────────────────────────
 async function run() {
-  const v = document.getElementById('dt').value;
+  const v=document.getElementById('dt').value;
   if (!v) { alert('Pick a date and time.'); return; }
+  document.getElementById('list-area').innerHTML='<div class="loading">Fetching terraces and weather…</div>';
+  document.getElementById('sun-banner').className='sun-banner';
 
-  document.getElementById('list-area').innerHTML = '<div class="loading">Fetching terraces and weather…</div>';
-  document.getElementById('sun-banner').className = 'sun-banner';
+  const [dp,tp]=v.split('T');
+  const [yr,mo,dy]=dp.split('-').map(Number);
+  const [lh,lm]=tp.split(':').map(Number);
 
-  const [dp, tp] = v.split('T');
-  const [yr, mo, dy] = dp.split('-').map(Number);
-  const [lh, lm]     = tp.split(':').map(Number);
+  // Amsterdam sun for banner
+  const AMS={lat:52.3676,lng:4.9041};
+  const {alt:amsAlt, az:amsAz}=sunPosLocal(AMS.lat, AMS.lng, yr, mo, dy, lh, lm);
+  const sunUp=amsAlt>0;
 
-  // Sun position for Amsterdam (primary city display)
-  const AMS_LAT = 52.3676, AMS_LNG = 4.9041;
-  const {alt: amsAlt, az: amsAz} = sunPosLocal(AMS_LAT, AMS_LNG, yr, mo, dy, lh, lm);
-  const sunUp = amsAlt > 0;
+  document.getElementById('sun-banner').className='sun-banner visible';
+  document.getElementById('sun-icon').textContent=sunUp?'☀️':'🌙';
+  const mainEl=document.getElementById('sun-main');
+  mainEl.textContent=sunUp
+    ?`Amsterdam: sun from ${compassDir(amsAz)} — ${Math.round(amsAlt)}° above horizon`
+    :'Sun is below the horizon in Amsterdam';
+  mainEl.className='sun-main'+(sunUp?'':' down');
 
-  // Sun banner
-  const banner = document.getElementById('sun-banner');
-  banner.className = 'sun-banner visible';
-  document.getElementById('sun-icon').textContent = sunUp ? '☀️' : '🌙';
-  const mainEl = document.getElementById('sun-main');
-  mainEl.textContent = sunUp
-    ? `Amsterdam: sun from ${compassDir(amsAz)} — ${Math.round(amsAlt)}° above horizon`
-    : 'Sun is below the horizon in Amsterdam';
-  mainEl.className = 'sun-main'+(sunUp?'':' down');
-
-  const ss = findSunset(AMS_LAT, AMS_LNG, yr, mo, dy);
-  if (ss && sunUp) {
-    const diff = (ss.h*60+ss.mn)-(lh*60+lm);
-    const hh = Math.floor(diff/60), mm = diff%60;
-    document.getElementById('sun-detail').textContent = `Sunset in ${hh>0?hh+'h ':''}${mm}m`;
+  const ss=findSunset(AMS.lat,AMS.lng,yr,mo,dy);
+  if (ss&&sunUp) {
+    const diff=(ss.h*60+ss.mn)-(lh*60+lm);
+    document.getElementById('sun-detail').textContent=`Sunset in ${Math.floor(diff/60)>0?Math.floor(diff/60)+'h ':''}${diff%60}m`;
   } else {
-    document.getElementById('sun-detail').textContent = sunUp ? '' : 'No direct sun at this time';
+    document.getElementById('sun-detail').textContent=sunUp?'':'No direct sun at this time';
   }
-  document.getElementById('weather-pill').textContent = 'Loading weather…';
+  document.getElementById('weather-pill').textContent='Loading…';
 
-  // Fetch terraces
   let terraces;
-  try {
-    terraces = await fetchTerraces();
-  } catch(e) {
-    document.getElementById('list-area').innerHTML =
-      `<div class="error-msg">Could not load terraces from Airtable.<br><br>${e.message}</div>`;
+  try { terraces=await fetchTerraces(); }
+  catch(e) {
+    document.getElementById('list-area').innerHTML=`<div class="error-msg">Could not load terraces.<br>${e.message}</div>`;
     return;
   }
 
   // Group by city
-  const cities = {};
-  terraces.forEach(t => {
-    const city = cityName(t.lat, t.lng);
-    if (!cities[city]) cities[city] = [];
-    cities[city].push(t);
-  });
+  const cities={};
+  terraces.forEach(t=>{ const c=cityName(t.lat,t.lng); if(!cities[c]) cities[c]=[]; cities[c].push(t); });
 
-  // Fetch weather per city in parallel
-  const isoHour = `${dp}T${String(lh).padStart(2,'0')}:00`;
-  const cityKeys = Object.keys(cities);
-  const weatherMap = {};
-  await Promise.all(cityKeys.map(async city => {
-    const sample = cities[city][0];
-    weatherMap[city] = await fetchWeather(sample.lat, sample.lng, isoHour);
+  // Weather per city
+  const isoHour=`${dp}T${String(lh).padStart(2,'0')}:00`;
+  const weatherMap={};
+  await Promise.all(Object.keys(cities).map(async c=>{
+    const s=cities[c][0];
+    weatherMap[c]=await fetchWeather(s.lat, s.lng, isoHour);
   }));
 
-  // Update weather pill with Amsterdam weather
-  const amsWeather = weatherMap['Amsterdam'] || {cloudCover:0, description:'—'};
-  document.getElementById('weather-pill').textContent =
-    `Amsterdam: ${amsWeather.description} · ${amsWeather.cloudCover}% cloud`;
+  const amsW=weatherMap['Amsterdam']||{cloudCover:0,description:'—'};
+  document.getElementById('weather-pill').textContent=`Amsterdam: ${amsW.description} · ${amsW.cloudCover}% cloud`;
 
-  // Rate all terraces
-  Object.keys(cities).forEach(city => {
-    const w = weatherMap[city] || {cloudCover:0};
-    cities[city] = cities[city].map(t => {
-      const {alt, az} = sunPosLocal(t.lat, t.lng, yr, mo, dy, lh, lm);
-      const rating = rateTerrace(alt, az, w.cloudCover, t.facing, t.shade_direction, t.shade_min_altitude);
-      return {...t, ...rating, sunAlt: alt, sunAz: az};
-    }).sort((a,b) => ORDER.indexOf(a.label)-ORDER.indexOf(b.label));
+  // Rate terraces
+  Object.keys(cities).forEach(c=>{
+    const w=weatherMap[c]||{cloudCover:0};
+    cities[c]=cities[c].map(t=>{
+      const {alt,az}=sunPosLocal(t.lat,t.lng,yr,mo,dy,lh,lm);
+      return {...t,...rateTerrace(alt,az,w.cloudCover,t.facing,t.shade_direction,t.shade_min_altitude)};
+    }).sort((a,b)=>ORDER.indexOf(a.label)-ORDER.indexOf(b.label));
   });
 
   // Render
-  const area = document.getElementById('list-area');
-  area.innerHTML = '';
+  const area=document.getElementById('list-area');
+  area.innerHTML='';
+  ['Amsterdam','Barcelona','Milan','Other'].forEach(c=>{
+    if (!cities[c]||!cities[c].length) return;
+    const w=weatherMap[c]||{cloudCover:0,description:'—'};
+    const sunnyCount=cities[c].filter(t=>t.label==='sunny').length;
 
-  const cityOrder = ['Amsterdam','Barcelona','Milan','Other'];
-  cityOrder.forEach(city => {
-    if (!cities[city] || cities[city].length === 0) return;
-    const list = cities[city];
-    const sunnyCount = list.filter(t => t.label==='sunny').length;
-    const w = weatherMap[city] || {cloudCover:0, description:'—'};
+    const hdr=document.createElement('div');
+    hdr.className='city-section';
+    hdr.innerHTML=`${c} &nbsp;·&nbsp; ${w.description} · ${w.cloudCover}% cloud &nbsp;·&nbsp; ${sunnyCount} in sun`;
+    area.appendChild(hdr);
 
-    const header = document.createElement('div');
-    header.className = 'city-section';
-    header.innerHTML = `${city} &nbsp;·&nbsp; ${w.description} · ${w.cloudCover}% cloud &nbsp;·&nbsp; ${sunnyCount} in sun`;
-    area.appendChild(header);
-
-    list.forEach(t => {
-      const hasShade = t.shade_direction && t.shade_min_altitude;
-      const card = document.createElement('div');
-      card.className = `terrace-card ${t.label}`;
-      card.innerHTML = `
+    cities[c].forEach(t=>{
+      const hasShade=t.shade_direction&&t.shade_min_altitude;
+      const card=document.createElement('div');
+      card.className=`terrace-card ${t.label}`;
+      card.innerHTML=`
         <div class="card-top">
           <div>
             <div class="card-name">${t.name}</div>
-            ${t.description ? `<div class="card-desc">${t.description}</div>` : ''}
+            ${t.description?`<div class="card-desc">${t.description}</div>`:''}
           </div>
           <span class="status-pill ${t.label}">${t.label}</span>
         </div>
         <div class="card-meta">
           <span class="meta-tag">Faces ${compassDir(t.facing)}</span>
           <span class="meta-tag">${t.reason}</span>
-          ${hasShade ? `<span class="meta-tag shade-warn">Building shade from ${compassDir(t.shade_direction)} below ${t.shade_min_altitude}°</span>` : ''}
+          ${hasShade?`<span class="meta-tag shade-warn">Building shade from ${compassDir(t.shade_direction)} below ${t.shade_min_altitude}°</span>`:''}
         </div>`;
       area.appendChild(card);
     });
   });
 }
 
+autoSetOffset();
 setNow();
 </script>
 </body>
