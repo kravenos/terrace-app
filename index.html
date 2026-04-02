@@ -128,9 +128,9 @@ function sunPosUTC(lat, lng, utcYr, utcMo, utcD, utcH, utcM) {
   const cz=Math.sin(lr)*Math.sin(dr)+Math.cos(lr)*Math.cos(dr)*Math.cos(hr);
   const ze=Math.acos(Math.min(1,Math.max(-1,cz)))*R;
   const alt=90-ze;
-  const ca=(Math.sin(lr)*cz-Math.sin(dr))/(Math.cos(lr)*Math.sin(ze*D));
-  let az=Math.acos(Math.min(1,Math.max(-1,ca)))*R;
-  if (ha>0) az=360-az;
+  // Azimuth: prefer atan2-based formula (more robust than acos branch logic)
+  // Returns degrees clockwise from North (0=N, 90=E, 180=S, 270=W)
+  const az=(Math.atan2(Math.sin(hr), Math.cos(hr)*Math.sin(lr) - Math.tan(dr)*Math.cos(lr))*R + 180) % 360;
   return {alt, az};
 }
 
