@@ -3,248 +3,345 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sun Engine — Phase 1 Test</title>
+<title>Terras in de Zon — Amsterdam</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e4e4ee; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
-  h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7a7aaa; margin-bottom: 6px; }
-  .subtitle { font-size: 0.78rem; color: #4a4a6a; margin-bottom: 40px; font-family: monospace; }
-  .card { background: #18181f; border: 1px solid #2a2a3a; border-radius: 14px; padding: 28px; width: 100%; max-width: 480px; margin-bottom: 20px; }
-  .card-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #4a4a6a; margin-bottom: 16px; }
-  label { font-size: 0.78rem; color: #7a7aaa; margin-bottom: 4px; display: block; }
-  input[type="datetime-local"] { width: 100%; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 8px; color: #e4e4ee; font-size: 0.9rem; padding: 10px 14px; outline: none; transition: border-color 0.15s; font-family: inherit; margin-bottom: 16px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e4e4ee; min-height: 100vh; padding: 0 0 60px; }
+
+  .topbar { background: #18181f; border-bottom: 1px solid #2a2a3a; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .logo { font-size: 1rem; font-weight: 700; color: #f5a623; letter-spacing: -0.02em; }
+  .logo span { color: #7a7aaa; font-weight: 400; }
+  .city-pill { font-size: 0.72rem; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 20px; padding: 4px 12px; color: #7a7aaa; }
+
+  .time-bar { padding: 16px 20px; background: #13131a; border-bottom: 1px solid #1e1e28; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .time-bar label { font-size: 0.75rem; color: #7a7aaa; }
+  input[type="datetime-local"] { background: #18181f; border: 1px solid #2a2a3a; border-radius: 8px; color: #e4e4ee; font-size: 0.85rem; padding: 7px 12px; outline: none; font-family: inherit; flex: 1; min-width: 200px; }
   input[type="datetime-local"]:focus { border-color: #f5a623; }
-  .location-pill { display: inline-flex; align-items: center; gap: 6px; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 20px; padding: 6px 14px; font-size: 0.8rem; color: #7a7aaa; margin-bottom: 20px; }
-  .location-dot { width: 7px; height: 7px; border-radius: 50%; background: #f5a623; flex-shrink: 0; }
-  button { width: 100%; background: #f5a623; color: #1a0e00; border: none; border-radius: 8px; padding: 12px; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: opacity 0.15s; font-family: inherit; }
-  button:hover { opacity: 0.88; }
-  .result-card { background: #18181f; border: 1px solid #2a2a3a; border-radius: 14px; padding: 28px; width: 100%; max-width: 480px; display: none; }
-  .result-card.visible { display: block; }
-  .sun-status { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #2a2a3a; }
-  .status-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
-  .status-icon.up { background: rgba(245,166,35,0.12); }
-  .status-icon.down { background: rgba(74,74,106,0.3); }
-  .status-label { font-size: 1.5rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-  .status-label.up { color: #f5a623; }
-  .status-label.down { color: #4a4a6a; }
-  .status-sub { font-size: 0.78rem; color: #7a7aaa; }
-  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-  .metric-box { background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 10px; padding: 14px; }
-  .metric-name { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: #4a4a6a; margin-bottom: 6px; }
-  .metric-value { font-size: 1.3rem; font-weight: 700; color: #e4e4ee; }
-  .compass-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
-  .compass-label { font-size: 0.68rem; color: #4a4a6a; margin-top: 8px; }
-  .section-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: #4a4a6a; margin-bottom: 12px; }
-  .terrace-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #1e1e28; font-size: 0.82rem; }
-  .terrace-row:last-child { border-bottom: none; }
-  .terrace-name { color: #c4c4dd; }
-  .terrace-facing { color: #4a4a6a; font-size: 0.72rem; }
-  .sun-pill { font-size: 0.68rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-  .sun-pill.sunny   { background: rgba(245,166,35,0.15); color: #f5a623; }
-  .sun-pill.partial { background: rgba(255,200,80,0.1);  color: #c8a040; }
-  .sun-pill.shaded  { background: rgba(74,74,106,0.2);   color: #5a5a8a; }
-  .sun-pill.down    { background: rgba(40,40,60,0.4);    color: #3a3a5a; }
-  .debug-box { margin-top: 16px; padding: 12px; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 8px; font-family: monospace; font-size: 0.7rem; color: #4a4a6a; line-height: 1.9; }
+  .calc-btn { background: #f5a623; color: #1a0e00; border: none; border-radius: 8px; padding: 8px 18px; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .calc-btn:hover { opacity: 0.88; }
+  .now-btn { background: #1e1e28; color: #7a7aaa; border: 1px solid #2a2a3a; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .now-btn:hover { border-color: #f5a623; color: #f5a623; }
+
+  .sun-banner { margin: 16px 20px; background: #18181f; border: 1px solid #2a2a3a; border-radius: 12px; padding: 16px 18px; display: none; }
+  .sun-banner.visible { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .sun-icon { font-size: 28px; }
+  .sun-info { flex: 1; }
+  .sun-main { font-size: 1rem; font-weight: 700; color: #f5a623; margin-bottom: 2px; }
+  .sun-main.down { color: #4a4a6a; }
+  .sun-detail { font-size: 0.75rem; color: #5a5a7a; }
+  .weather-pill { font-size: 0.72rem; padding: 4px 10px; border-radius: 20px; background: #0f0f13; border: 1px solid #2a2a3a; color: #7a7aaa; white-space: nowrap; }
+
+  .list-header { padding: 10px 20px 6px; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: #3a3a5a; }
+
+  .terrace-card { margin: 0 20px 10px; background: #18181f; border: 1px solid #2a2a3a; border-radius: 12px; padding: 16px; transition: border-color 0.15s; }
+  .terrace-card:hover { border-color: #3a3a5a; }
+  .terrace-card.sunny   { border-left: 3px solid #f5a623; }
+  .terrace-card.partial { border-left: 3px solid #8a6a20; }
+  .terrace-card.shaded  { border-left: 3px solid #2a2a4a; }
+  .terrace-card.down    { border-left: 3px solid #1e1e2e; opacity: 0.5; }
+
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .card-name { font-size: 0.92rem; font-weight: 600; color: #e4e4ee; }
+  .card-desc { font-size: 0.75rem; color: #5a5a7a; margin-top: 2px; }
+
+  .status-pill { font-size: 0.68rem; font-weight: 700; padding: 4px 11px; border-radius: 20px; letter-spacing: 0.05em; white-space: nowrap; }
+  .status-pill.sunny   { background: rgba(245,166,35,0.15); color: #f5a623; }
+  .status-pill.partial { background: rgba(180,120,30,0.15); color: #c8902a; }
+  .status-pill.shaded  { background: rgba(60,60,100,0.3);   color: #6a6a9a; }
+  .status-pill.down    { background: rgba(30,30,50,0.5);    color: #3a3a5a; }
+
+  .card-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+  .meta-tag { font-size: 0.68rem; background: #0f0f13; border: 1px solid #1e1e28; border-radius: 6px; padding: 2px 8px; color: #4a4a6a; }
+  .meta-tag.shade-warn { border-color: #3a2a1a; color: #7a5a2a; }
+
+  .loading { text-align: center; padding: 60px 20px; color: #3a3a5a; font-size: 0.85rem; }
+  .error-msg { margin: 20px; background: #1e1010; border: 1px solid #3a1a1a; border-radius: 10px; padding: 16px; color: #aa5a5a; font-size: 0.82rem; }
+
+  .empty { text-align: center; padding: 40px 20px; color: #3a3a5a; font-size: 0.85rem; }
 </style>
 </head>
 <body>
 
-<h1>Terrace Sun Engine</h1>
-<p class="subtitle">phase 1 — calculation test · amsterdam</p>
-
-<div class="card">
-  <div class="card-label">Pick a date & time</div>
-  <label>When do you want to check?</label>
-  <input type="datetime-local" id="dt-picker">
-  <label>Location</label>
-  <div class="location-pill"><div class="location-dot"></div>Amsterdam, NL (52.3676° N, 4.9041° E)</div>
-  <button onclick="calculate()">Calculate sun position</button>
+<div class="topbar">
+  <div class="logo">terras<span>indezon</span></div>
+  <div class="city-pill">Amsterdam</div>
 </div>
 
-<div class="result-card" id="result">
-  <div class="sun-status">
-    <div class="status-icon" id="s-icon"></div>
-    <div>
-      <div class="status-label" id="s-label"></div>
-      <div class="status-sub"  id="s-sub"></div>
-    </div>
-  </div>
-  <div class="metrics">
-    <div class="metric-box"><div class="metric-name">Altitude</div><div class="metric-value" id="v-alt">—</div></div>
-    <div class="metric-box"><div class="metric-name">Azimuth</div><div class="metric-value"  id="v-az">—</div></div>
-    <div class="metric-box"><div class="metric-name">Direction</div><div class="metric-value" id="v-dir">—</div></div>
-    <div class="metric-box"><div class="metric-name">Until sunset</div><div class="metric-value" id="v-set">—</div></div>
-  </div>
-  <div class="compass-wrap">
-    <canvas id="compass" width="160" height="160"></canvas>
-    <div class="compass-label">Sun direction on compass</div>
-  </div>
-  <div class="section-label">Sample terraces — Amsterdam</div>
-  <div id="terrace-list"></div>
-  <div class="debug-box" id="debug"></div>
+<div class="time-bar">
+  <label>Check for:</label>
+  <input type="datetime-local" id="dt">
+  <button class="now-btn" onclick="setNow()">Now</button>
+  <button class="calc-btn" onclick="run()">Find sunny terraces</button>
 </div>
+
+<div class="sun-banner" id="sun-banner">
+  <div class="sun-icon" id="sun-icon"></div>
+  <div class="sun-info">
+    <div class="sun-main" id="sun-main"></div>
+    <div class="sun-detail" id="sun-detail"></div>
+  </div>
+  <div class="weather-pill" id="weather-pill">Loading weather…</div>
+</div>
+
+<div id="list-area"><div class="empty">Pick a time and hit "Find sunny terraces"</div></div>
 
 <script>
-const D2R = Math.PI / 180;
-const R2D = 180 / Math.PI;
+const AIRTABLE_TOKEN   = 'patg7yR2DQsMb6BpS.f98e7570cf71e68555e298d78a11bd346053f175beaf78413d4a07b636152f14';
+const AIRTABLE_BASE_ID = 'appqgDqaabs6MjuAd';
+const AIRTABLE_TABLE   = 'Terraces';
+const LAT = 52.3676, LNG = 4.9041;
+const D = Math.PI/180, R = 180/Math.PI;
 
-function sunPosition(latDeg, lngDeg, date) {
-  // Julian day count from J2000.0
-  const jd = date.getTime() / 86400000.0 + 2440587.5;
-  const n  = jd - 2451545.0;
-
-  // Mean longitude (deg) and mean anomaly (deg)
-  let L = (280.460 + 0.9856474 * n) % 360; if (L < 0) L += 360;
-  let g = (357.528 + 0.9856003 * n) % 360; if (g < 0) g += 360;
-
-  // Ecliptic longitude and obliquity
-  const lam = L + 1.915 * Math.sin(g * D2R) + 0.020 * Math.sin(2 * g * D2R);
-  const eps  = 23.439 - 0.0000004 * n;
-
-  // Right ascension (0–360 deg) and declination
-  let ra = Math.atan2(Math.cos(eps * D2R) * Math.sin(lam * D2R), Math.cos(lam * D2R)) * R2D;
-  if (ra < 0) ra += 360;
-  const dec = Math.asin(Math.sin(eps * D2R) * Math.sin(lam * D2R)) * R2D;
-
-  // Greenwich Mean Sidereal Time (deg)
-  let gmst = (280.46061837 + 360.98564736629 * n) % 360;
-  if (gmst < 0) gmst += 360;
-
-  // Local Hour Angle (0–360 deg). West of meridian = 0–180, East = 180–360
-  const lha = ((gmst + lngDeg - ra) % 360 + 360) % 360;
-
-  // Altitude (elevation above horizon)
-  const phi  = latDeg * D2R;
-  const d    = dec    * D2R;
-  const h    = lha    * D2R;
-  const sinAlt = Math.sin(phi)*Math.sin(d) + Math.cos(phi)*Math.cos(d)*Math.cos(h);
-  const alt  = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * R2D;
-
-  // Azimuth: N=0, E=90, S=180, W=270
-  const sinAz = -Math.cos(d) * Math.sin(h);
-  const cosAz =  Math.sin(d) * Math.cos(phi) - Math.cos(d) * Math.sin(phi) * Math.cos(h);
-  let az = Math.atan2(sinAz, cosAz) * R2D;
-  if (az < 0) az += 360;
-
-  return { alt, az, dec, lha, ra, gmst };
+// ── DST-aware Amsterdam UTC offset ──────────────────────────────────────────
+function offset(yr, mo, dy, hr) {
+  function lastSun(y, m) {
+    const d = new Date(Date.UTC(y, m, 0));
+    return d.getUTCDate() - d.getUTCDay();
+  }
+  const ms = lastSun(yr, 3), os = lastSun(yr, 10);
+  if (mo < 3 || mo > 10) return 1;
+  if (mo > 3 && mo < 10) return 2;
+  if (mo === 3)  return (dy > ms || (dy === ms && hr >= 2)) ? 2 : 1;
+  if (mo === 10) return (dy > os || (dy === os && hr >= 3)) ? 1 : 2;
+  return 1;
 }
 
-function findSunset(lat, lng, fromDate) {
-  let t = new Date(fromDate.getTime());
-  let prev = sunPosition(lat, lng, t).alt;
-  for (let i = 0; i < 720; i++) {
-    t = new Date(t.getTime() + 60000);
-    const a = sunPosition(lat, lng, t).alt;
-    if (prev > 0 && a <= 0) return t;
-    prev = a;
+// ── Julian Day ───────────────────────────────────────────────────────────────
+function toJD(y, mo, d, h, mn) {
+  const a = Math.floor((14-mo)/12), yy = y+4800-a, mm = mo+12*a-3;
+  const jdn = d+Math.floor((153*mm+2)/5)+365*yy+Math.floor(yy/4)-Math.floor(yy/100)+Math.floor(yy/400)-32045;
+  return jdn - 0.5 + h/24 + mn/1440;
+}
+
+// ── Sun position ─────────────────────────────────────────────────────────────
+function sunPos(yr, mo, dy, lh, lm) {
+  const off = offset(yr, mo, dy, lh);
+  let uh = lh - off, ud = dy;
+  if (uh < 0)  { uh += 24; ud--; }
+  if (uh >= 24){ uh -= 24; ud++; }
+  const j = toJD(yr, mo, ud, uh, lm);
+  const jc = (j - 2451545.0) / 36525;
+  const L0 = (280.46646+jc*(36000.76983+jc*0.0003032))%360;
+  const M  = 357.52911+jc*(35999.05029-0.0001537*jc);
+  const C  = Math.sin(M*D)*(1.914602-jc*(0.004817+0.000014*jc))+Math.sin(2*M*D)*(0.019993-0.000101*jc)+Math.sin(3*M*D)*0.000289;
+  const sl = L0+C, om = 125.04-1934.136*jc, la = sl-0.00569-0.00478*Math.sin(om*D);
+  const e0 = 23+(26+(21.448-jc*(46.815+jc*(0.00059-jc*0.001813)))/60)/60;
+  const ep = e0+0.00256*Math.cos(om*D);
+  const dc = Math.asin(Math.sin(ep*D)*Math.sin(la*D))*R;
+  const t2 = Math.tan((ep/2)*D)**2;
+  const eot = 4*R*(t2*Math.sin(2*L0*D)-2*0.016708634*Math.sin(M*D)+4*0.016708634*t2*Math.sin(M*D)*Math.cos(2*L0*D)-0.5*t2**2*Math.sin(4*L0*D)-1.25*0.016708634**2*Math.sin(2*M*D));
+  const tst = (uh*60+lm+eot+4*LNG+1440)%1440;
+  let ha = tst/4-180; if (ha<-180) ha+=360;
+  const lr=LAT*D,dr=dc*D,hr=ha*D;
+  const cz=Math.sin(lr)*Math.sin(dr)+Math.cos(lr)*Math.cos(dr)*Math.cos(hr);
+  const ze=Math.acos(Math.min(1,Math.max(-1,cz)))*R;
+  const alt=90-ze;
+  const ca=(Math.sin(lr)*cz-Math.sin(dr))/(Math.cos(lr)*Math.sin(ze*D));
+  let az=Math.acos(Math.min(1,Math.max(-1,ca)))*R;
+  if (ha>0) az=360-az;
+  return {alt, az};
+}
+
+function findSunset(yr, mo, dy) {
+  let last = sunPos(yr,mo,dy,12,0).alt;
+  for (let m=1;m<=720;m++) {
+    const h=12+Math.floor(m/60),mn=m%60;
+    if (h>=24) break;
+    const a=sunPos(yr,mo,dy,h,mn).alt;
+    if (last>0&&a<=0) return {h,mn};
+    last=a;
   }
   return null;
 }
 
-function toDir(az) {
+function compassDir(az) {
   return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(az/22.5)%16];
 }
 
-function sunLabel(alt, az, faceDeg) {
-  if (alt <= 0) return 'down';
-  if (alt < 5)  return 'shaded';
-  let diff = Math.abs(az - faceDeg); if (diff > 180) diff = 360 - diff;
-  if (diff <= 45) return 'sunny';
-  if (diff <= 70) return 'partial';
-  return 'shaded';
+// ── Building shade logic ─────────────────────────────────────────────────────
+// A terrace is shade-blocked if the sun is coming from near shade_direction
+// AND the sun's altitude is below shade_min_altitude from that direction
+function isBuildingShaded(sunAlt, sunAz, shadeDirDeg, shadeMinAlt) {
+  if (!shadeDirDeg || !shadeMinAlt) return false;
+  let diff = Math.abs(sunAz - shadeDirDeg);
+  if (diff > 180) diff = 360 - diff;
+  // Sun is in the shade zone (within 45° of the blocking direction)
+  if (diff <= 45) return sunAlt < shadeMinAlt;
+  return false;
 }
 
-const TERRACES = [
-  { name:"Café de Jaren",         facing:180 },
-  { name:"Brouwerij 't IJ",       facing:270 },
-  { name:"Hannekes Boom",         facing:90  },
-  { name:"Café Kobalt",           facing:225 },
-  { name:"Pllek",                 facing:270 },
-  { name:"Rooftop A'DAM Tower",   facing:180 },
-  { name:"Bar Oldenhof",          facing:135 },
-  { name:"Canvas op de 7e",       facing:315 },
-];
+// ── Sun rating per terrace ───────────────────────────────────────────────────
+function rateTerace(sunAlt, sunAz, cloudCover, facing, shadeDirDeg, shadeMinAlt) {
+  if (sunAlt <= 0) return { label: 'down', reason: 'Sun is below the horizon' };
+  if (sunAlt < 5)  return { label: 'shaded', reason: 'Sun too low on horizon' };
 
-function drawCompass(az, alt) {
-  const c = document.getElementById('compass');
-  const ctx = c.getContext('2d');
-  const cx = 80, cy = 80;
-  ctx.clearRect(0, 0, 160, 160);
-  ctx.beginPath(); ctx.arc(cx,cy,70,0,2*Math.PI);
-  ctx.fillStyle='#0f0f13'; ctx.fill();
-  ctx.strokeStyle='#2a2a3a'; ctx.lineWidth=1; ctx.stroke();
-  ctx.font='11px monospace'; ctx.fillStyle='#4a4a6a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('N',cx,cy-56); ctx.fillText('S',cx,cy+56); ctx.fillText('E',cx+56,cy); ctx.fillText('W',cx-56,cy);
-  if (alt <= 0) { ctx.fillText('below horizon',cx,cy); return; }
-  const angle = (az - 90) * D2R;
-  const sx = cx + 46*Math.cos(angle), sy = cy + 46*Math.sin(angle);
-  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(sx,sy);
-  ctx.strokeStyle='#f5a623'; ctx.lineWidth=2; ctx.stroke();
-  ctx.beginPath(); ctx.arc(sx,sy,10,0,2*Math.PI);
-  ctx.fillStyle='#f5a623'; ctx.fill();
-  ctx.font='bold 11px monospace'; ctx.fillStyle='#f5a623';
-  ctx.fillText(Math.round(alt)+'°', cx, cy+20);
+  if (isBuildingShaded(sunAlt, sunAz, shadeDirDeg, shadeMinAlt)) {
+    return { label: 'shaded', reason: `Blocked by neighbouring building until sun rises higher` };
+  }
+
+  let diff = Math.abs(sunAz - facing);
+  if (diff > 180) diff = 360 - diff;
+
+  let sunScore;
+  if (diff <= 45)       sunScore = 'sunny';
+  else if (diff <= 70)  sunScore = 'partial';
+  else                  sunScore = 'shaded';
+
+  if (sunScore === 'shaded') return { label: 'shaded', reason: 'Sun is behind this terrace' };
+
+  // Cloud cover modifier
+  if (cloudCover >= 80) return { label: 'shaded', reason: 'Heavy cloud cover' };
+  if (cloudCover >= 50 && sunScore === 'partial') return { label: 'shaded', reason: 'Partial sun + clouds' };
+  if (cloudCover >= 50) return { label: 'partial', reason: `${cloudCover}% cloud cover` };
+
+  return { label: sunScore, reason: sunScore === 'sunny' ? 'Direct sunlight' : 'Partial sunlight' };
 }
 
-function calculate() {
-  const v = document.getElementById('dt-picker').value;
-  if (!v) { alert('Pick a date and time first.'); return; }
-  // Parse as LOCAL time to avoid UTC shift on Windows
+// ── Airtable fetch ───────────────────────────────────────────────────────────
+async function fetchTerraces() {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE)}?filterByFormula={active}=1&maxRecords=100`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
+  if (!res.ok) throw new Error(`Airtable error ${res.status}`);
+  const data = await res.json();
+  return data.records.map(r => ({
+    name:               r.fields.name || '?',
+    lat:                parseFloat(r.fields.lat) || LAT,
+    lng:                parseFloat(r.fields.lng) || LNG,
+    facing:             parseInt(r.fields.facing) || 180,
+    shade_direction:    parseInt(r.fields.shade_direction) || 0,
+    shade_min_altitude: parseInt(r.fields.shade_min_altitude) || 0,
+    description:        r.fields.description || '',
+  }));
+}
+
+// ── Open-Meteo weather fetch ─────────────────────────────────────────────────
+async function fetchWeather(isoDatetime) {
+  const date = isoDatetime.split('T')[0];
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LNG}&hourly=cloudcover,weathercode&start_date=${date}&end_date=${date}&timezone=Europe%2FAmsterdam`;
+  const res = await fetch(url);
+  if (!res.ok) return { cloudCover: 0, description: 'Weather unavailable' };
+  const data = await res.json();
+  const hour = parseInt(isoDatetime.split('T')[1].split(':')[0]);
+  const idx  = data.hourly.time.findIndex(t => t === isoDatetime.slice(0,13)+':00');
+  const cc   = idx >= 0 ? data.hourly.cloudcover[idx] : 0;
+  const wc   = idx >= 0 ? data.hourly.weathercode[idx] : 0;
+  const desc = weatherDesc(wc, cc);
+  return { cloudCover: cc, description: desc };
+}
+
+function weatherDesc(code, cc) {
+  if (code === 0) return 'Clear sky';
+  if (code <= 3)  return cc > 50 ? 'Mostly cloudy' : 'Partly cloudy';
+  if (code <= 48) return 'Foggy';
+  if (code <= 67) return 'Rain';
+  if (code <= 77) return 'Snow';
+  if (code <= 82) return 'Showers';
+  return 'Stormy';
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+function setNow() {
+  const now = new Date();
+  const p = n => String(n).padStart(2,'0');
+  document.getElementById('dt').value =
+    `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}T${p(now.getHours())}:${p(now.getMinutes())}`;
+}
+
+function showLoading() {
+  document.getElementById('list-area').innerHTML = '<div class="loading">Fetching terraces and weather…</div>';
+}
+
+function showError(msg) {
+  document.getElementById('list-area').innerHTML = `<div class="error-msg">${msg}</div>`;
+}
+
+const ORDER = ['sunny','partial','shaded','down'];
+
+// ── Main run ─────────────────────────────────────────────────────────────────
+async function run() {
+  const v = document.getElementById('dt').value;
+  if (!v) { alert('Pick a date and time.'); return; }
+
+  showLoading();
+
   const [dp, tp] = v.split('T');
   const [yr, mo, dy] = dp.split('-').map(Number);
-  const [hr, mn]     = tp.split(':').map(Number);
-  const d = new Date(yr, mo-1, dy, hr, mn, 0);
+  const [lh, lm]     = tp.split(':').map(Number);
 
-  const LAT = 52.3676, LNG = 4.9041;
-  const {alt, az, dec, lha, ra, gmst} = sunPosition(LAT, LNG, d);
-  const up  = alt > 0;
-  const dir = toDir(az);
+  const { alt, az } = sunPos(yr, mo, dy, lh, lm);
+  const sunUp = alt > 0;
 
-  const si = document.getElementById('s-icon');
-  const sl = document.getElementById('s-label');
-  const ss = document.getElementById('s-sub');
-  si.textContent = up ? '☀' : '🌙';
-  si.className   = 'status-icon ' + (up ? 'up' : 'down');
-  sl.textContent = up ? 'Sun is up' : 'Sun is below horizon';
-  sl.className   = 'status-label ' + (up ? 'up' : 'down');
-  ss.textContent = up ? `Shining from the ${dir} at ${Math.round(alt)}° above horizon` : 'No terraces in sun at this time';
+  // Sun banner
+  const banner = document.getElementById('sun-banner');
+  banner.className = 'sun-banner visible';
+  document.getElementById('sun-icon').textContent = sunUp ? '☀️' : '🌙';
+  const mainEl = document.getElementById('sun-main');
+  mainEl.textContent = sunUp ? `Sun from ${compassDir(az)} — ${Math.round(alt)}° above horizon` : 'Sun is below the horizon';
+  mainEl.className = 'sun-main' + (sunUp ? '' : ' down');
 
-  document.getElementById('v-alt').textContent = Math.round(alt)  + '°';
-  document.getElementById('v-az').textContent  = Math.round(az)   + '°';
-  document.getElementById('v-dir').textContent = dir;
+  // Sunset info
+  const ss = findSunset(yr, mo, dy);
+  if (ss && sunUp) {
+    const diff = (ss.h*60+ss.mn)-(lh*60+lm);
+    const hh = Math.floor(diff/60), mm = diff%60;
+    document.getElementById('sun-detail').textContent = `Sunset in ${hh > 0 ? hh+'h ' : ''}${mm}m`;
+  } else if (!sunUp) {
+    document.getElementById('sun-detail').textContent = 'No terrace will be in direct sun';
+  } else {
+    document.getElementById('sun-detail').textContent = '';
+  }
 
-  const sunset = up ? findSunset(LAT, LNG, d) : null;
-  if (sunset) {
-    const ms = sunset - d, h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
-    document.getElementById('v-set').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
-  } else { document.getElementById('v-set').textContent = '—'; }
+  // Fetch weather + terraces in parallel
+  let weather = { cloudCover: 0, description: 'Unknown' };
+  let terraces = [];
+  try {
+    [weather, terraces] = await Promise.all([
+      fetchWeather(v.slice(0,13)+':00'),
+      fetchTerraces()
+    ]);
+  } catch(e) {
+    showError(`Could not load data: ${e.message}`);
+    return;
+  }
 
-  drawCompass(az, alt);
+  document.getElementById('weather-pill').textContent = `${weather.description} · ${weather.cloudCover}% cloud`;
 
-  const list = document.getElementById('terrace-list');
-  list.innerHTML = '';
-  TERRACES.forEach(t => {
-    const lbl = sunLabel(alt, az, t.facing);
-    const row = document.createElement('div');
-    row.className = 'terrace-row';
-    row.innerHTML = `<div><div class="terrace-name">${t.name}</div><div class="terrace-facing">Faces ${toDir(t.facing)} (${t.facing}°)</div></div><span class="sun-pill ${lbl}">${lbl}</span>`;
-    list.appendChild(row);
+  // Rate and sort
+  const rated = terraces.map(t => {
+    const rating = rateTerace(alt, az, weather.cloudCover, t.facing, t.shade_direction, t.shade_min_altitude);
+    return { ...t, ...rating };
+  }).sort((a,b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
+
+  // Render
+  const area = document.getElementById('list-area');
+  if (rated.length === 0) { area.innerHTML = '<div class="empty">No terraces found in database.</div>'; return; }
+
+  const sunnyCount = rated.filter(t => t.label === 'sunny').length;
+  area.innerHTML = `<div class="list-header">${sunnyCount} terrace${sunnyCount!==1?'s':''} in direct sun · ${rated.length} total</div>`;
+
+  rated.forEach(t => {
+    const hasShade = t.shade_direction && t.shade_min_altitude;
+    const card = document.createElement('div');
+    card.className = `terrace-card ${t.label}`;
+    card.innerHTML = `
+      <div class="card-top">
+        <div>
+          <div class="card-name">${t.name}</div>
+          ${t.description ? `<div class="card-desc">${t.description}</div>` : ''}
+        </div>
+        <span class="status-pill ${t.label}">${t.label}</span>
+      </div>
+      <div class="card-meta">
+        <span class="meta-tag">Faces ${compassDir(t.facing)}</span>
+        <span class="meta-tag">${t.reason}</span>
+        ${hasShade ? `<span class="meta-tag shade-warn">Building shade from ${compassDir(t.shade_direction)} below ${t.shade_min_altitude}°</span>` : ''}
+      </div>`;
+    area.appendChild(card);
   });
-
-  document.getElementById('debug').innerHTML =
-    `Local time parsed: ${d.toLocaleString()}<br>` +
-    `UTC equivalent: ${d.toUTCString()}<br>` +
-    `Declination: ${dec.toFixed(2)}° &nbsp; RA: ${ra.toFixed(2)}°<br>` +
-    `GMST: ${gmst.toFixed(2)}° &nbsp; LHA: ${lha.toFixed(2)}°<br>` +
-    `Result → Altitude: ${alt.toFixed(2)}° &nbsp; Azimuth: ${az.toFixed(2)}°`;
-
-  document.getElementById('result').className = 'result-card visible';
 }
 
-// Default to now
-const now = new Date(), pad = n => String(n).padStart(2,'0');
-document.getElementById('dt-picker').value =
-  `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+// Init with current time
+setNow();
 </script>
 </body>
 </html>
