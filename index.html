@@ -78,6 +78,30 @@
   .leaflet-popup-content-wrapper { border-radius: 10px; }
   .leaflet-popup-content { margin: 12px 14px; font-size: 0.85rem; line-height: 1.45; color: #1a1a22; }
   .leaflet-popup-content b { color: #111; }
+  .leaflet-popup-content .t-status { font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .leaflet-popup-content .t-status.sunny { color: #c87800; }
+  .leaflet-popup-content .t-status.partial { color: #a07020; }
+  .leaflet-popup-content .t-status.shaded { color: #5a5a7a; }
+  .leaflet-popup-content .t-status.down { color: #7a7a8a; }
+
+  .terrace-table-wrap { margin: 0 16px 24px; border: 1px solid #2a2a3a; border-radius: 12px; overflow: hidden; background: #13131a; }
+  .terrace-table-head { padding: 10px 14px; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: #5a5a7a; border-bottom: 1px solid #1e1e28; }
+  .terrace-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .terrace-table th { text-align: left; padding: 8px 10px; color: #6a6a8a; font-weight: 600; background: #18181f; border-bottom: 1px solid #1e1e28; white-space: nowrap; }
+  .terrace-table td { padding: 10px; border-bottom: 1px solid #1e1e28; color: #c8c8d8; vertical-align: top; }
+  .terrace-table tr:last-child td { border-bottom: none; }
+  .terrace-table tr:hover td { background: rgba(245,166,35,0.04); }
+  .terrace-table .col-sun { font-size: 1.1rem; line-height: 1.2; }
+  .terrace-table .col-wx { white-space: nowrap; }
+  .terrace-table .status { font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .terrace-table .status.sunny { color: #f5a623; }
+  .terrace-table .status.partial { color: #c8902a; }
+  .terrace-table .status.shaded { color: #8a8aaa; }
+  .terrace-table .status.down { color: #4a4a6a; }
+  @media (max-width: 720px) {
+    .terrace-table { font-size: 0.72rem; }
+    .terrace-table th:nth-child(5), .terrace-table td:nth-child(5) { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -233,11 +257,31 @@ async function fetchWeather(lat, lng, isoDatetime) {
   const hour=parseInt(isoDatetime.slice(11,13));
   const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloudcover,weathercode&start_date=${date}&end_date=${date}&timezone=auto`;
   try {
-    const res=await fetch(url); if (!res.ok) return {cloudCover:0,description:'N/A'};
+    const res=await fetch(url); if (!res.ok) return {cloudCover:0, weatherCode:0, description:'N/A'};
     const data=await res.json();
     const idx=Math.min(hour, data.hourly.cloudcover.length-1);
-    return {cloudCover:data.hourly.cloudcover[idx]??0, description:weatherDesc(data.hourly.weathercode[idx]??0, data.hourly.cloudcover[idx]??0)};
-  } catch { return {cloudCover:0, description:'N/A'}; }
+    const wc = data.hourly.weathercode[idx] ?? 0;
+    const cc = data.hourly.cloudcover[idx] ?? 0;
+    return { cloudCover: cc, weatherCode: wc, description: weatherDesc(wc, cc) };
+  } catch { return {cloudCover:0, weatherCode:0, description:'N/A'}; }
+}
+
+/** WMO-style emoji (Open-Meteo weather codes) — matches common OS / app icons */
+function weatherEmoji(code, cc) {
+  const c = Number(code) || 0;
+  const cloud = Math.max(0, Math.min(100, Number(cc) || 0));
+  if (c === 0) return '☀️';
+  if (c === 1) return '🌤️';
+  if (c === 2) return cloud > 55 ? '🌥️' : '⛅';
+  if (c === 3) return '☁️';
+  if (c >= 45 && c <= 48) return '🌫️';
+  if (c >= 51 && c <= 57) return '🌦️';
+  if (c >= 61 && c <= 67) return '🌧️';
+  if (c >= 71 && c <= 77) return '🌨️';
+  if (c >= 80 && c <= 82) return '🌦️';
+  if (c >= 85 && c <= 86) return '🌨️';
+  if (c >= 95 && c <= 99) return '⛈️';
+  return cloud > 70 ? '☁️' : '🌤️';
 }
 
 function weatherDesc(code, cc) {
@@ -290,13 +334,21 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-function renderTerraceMap(cities, weatherMap) {
+function renderTerraceMap(cities, weatherMap, ctx) {
   const area = document.getElementById('list-area');
   if (typeof L === 'undefined') {
     area.innerHTML = '<div class="error-msg">Map library failed to load. Check your network and refresh.</div>';
     return;
   }
-  area.innerHTML = '<div class="map-wrap"><div id="map"></div><div class="map-legend" id="map-legend"></div></div>';
+  const { sunSky, amsW } = ctx;
+
+  area.innerHTML =
+    '<div class="map-wrap"><div id="map"></div><div class="map-legend" id="map-legend"></div></div>' +
+    '<div class="terrace-table-wrap">' +
+    '<div class="terrace-table-head" id="terrace-table-head">Visible on map</div>' +
+    '<div style="overflow-x:auto"><table class="terrace-table" aria-label="Terraces visible in map view">' +
+    '<thead><tr><th>Name</th><th>Terrace</th><th>Sun</th><th>Weather</th><th>Faces</th><th>Notes</th></tr></thead>' +
+    '<tbody id="terrace-table-body"></tbody></table></div></div>';
 
   const all = [];
   ['Amsterdam','Other'].forEach(c => {
@@ -323,6 +375,21 @@ function renderTerraceMap(cities, weatherMap) {
     maxZoom: 19
   }).addTo(map);
 
+  function buildPopup(t) {
+    const hasShade = t.shade_direction && t.shade_min_altitude;
+    const w = weatherMap[t._city] || {};
+    const wx = weatherEmoji(w.weatherCode ?? 0, w.cloudCover ?? 0);
+    return (
+      `<b>${escapeHtml(t.name)}</b><br>` +
+      `Sun level: ${sunSky.emoji} ${escapeHtml(sunSky.fraction)} (${escapeHtml(sunSky.label)})<br>` +
+      `Weather: ${wx} ${escapeHtml(w.description || '—')} · ${w.cloudCover ?? 0}% cloud<br>` +
+      `<span class="t-status ${escapeHtml(t.label)}">${escapeHtml(t.label)}</span> — ${escapeHtml(t.reason)}<br>` +
+      `Faces ${escapeHtml(compassDir(t.facing))}` +
+      (hasShade ? `<br>Building shade from ${escapeHtml(compassDir(t.shade_direction))} below ${escapeHtml(t.shade_min_altitude)}°` : '') +
+      (t.description ? `<br><em>${escapeHtml(t.description)}</em>` : '')
+    );
+  }
+
   all.forEach(t => {
     const color = MARKER_COLORS[t.label] || '#888';
     const m = L.circleMarker([t.lat, t.lng], {
@@ -332,19 +399,41 @@ function renderTerraceMap(cities, weatherMap) {
       fillColor: color,
       fillOpacity: 0.92
     }).addTo(map);
-    const hasShade = t.shade_direction && t.shade_min_altitude;
-    const w = weatherMap[t._city] || {};
-    const popup =
-      `<b>${escapeHtml(t.name)}</b><br>` +
-      `${escapeHtml(t._city)} · ${escapeHtml(w.description || '—')} · ${w.cloudCover ?? 0}% cloud<br>` +
-      `<strong>${escapeHtml(t.label)}</strong> — ${escapeHtml(t.reason)}<br>` +
-      `Faces ${escapeHtml(compassDir(t.facing))}` +
-      (hasShade ? `<br>Building shade from ${escapeHtml(compassDir(t.shade_direction))} below ${escapeHtml(t.shade_min_altitude)}°` : '') +
-      (t.description ? `<br><em>${escapeHtml(t.description)}</em>` : '');
-    m.bindPopup(popup);
+    m.bindPopup(buildPopup(t));
   });
 
-  setTimeout(() => { map.invalidateSize(); }, 150);
+  function refreshVisibleTable() {
+    const bounds = map.getBounds();
+    const visible = all
+      .filter(t => bounds.contains(L.latLng(t.lat, t.lng)))
+      .sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
+    const head = document.getElementById('terrace-table-head');
+    const body = document.getElementById('terrace-table-body');
+    if (!head || !body) return;
+    head.textContent = `Visible on map (${visible.length} of ${all.length})`;
+    if (!visible.length) {
+      body.innerHTML = '<tr><td colspan="6" style="color:#5a5a7a;padding:16px;">No terraces in this view — pan or zoom out.</td></tr>';
+      return;
+    }
+    body.innerHTML = visible.map(t => {
+      const hasShade = t.shade_direction && t.shade_min_altitude;
+      const note = [t.reason, hasShade ? `Shade ${compassDir(t.shade_direction)} <${t.shade_min_altitude}°` : '', t.description].filter(Boolean).join(' · ');
+      return `<tr>
+        <td><b>${escapeHtml(t.name)}</b></td>
+        <td><span class="status ${escapeHtml(t.label)}">${escapeHtml(t.label)}</span></td>
+        <td class="col-sun" title="${escapeHtml(sunSky.label)}">${sunSky.emoji}<span style="font-size:0.65rem;color:#7a7aaa;margin-left:4px">${escapeHtml(sunSky.fraction)}</span></td>
+        <td class="col-wx">${wxEmoji} ${escapeHtml(amsW.description || '—')}<br><span style="color:#6a6a8a;font-size:0.68rem">${amsW.cloudCover ?? 0}% cloud</span></td>
+        <td>${escapeHtml(compassDir(t.facing))}</td>
+        <td style="color:#8a8aaa;font-size:0.72rem;max-width:220px">${escapeHtml(note)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  map.on('moveend', refreshVisibleTable);
+  map.on('zoomend', refreshVisibleTable);
+  refreshVisibleTable();
+
+  setTimeout(() => { map.invalidateSize(); refreshVisibleTable(); }, 150);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -414,7 +503,9 @@ async function run() {
   skyBtn.title = `${sky.label} (${sky.fraction}) · ${sky.detail}`;
   skyBtn.setAttribute('aria-label', `${sky.label}, ${sky.fraction} sun, ${sky.detail}`);
 
-  document.getElementById('weather-pill').textContent=`Amsterdam: ${amsW.description} · ${amsW.cloudCover}% cloud`;
+  const wxPill = weatherEmoji(amsW.weatherCode ?? 0, amsW.cloudCover ?? 0);
+  document.getElementById('weather-pill').textContent =
+    `${wxPill} Amsterdam: ${amsW.description} · ${amsW.cloudCover}% cloud`;
 
   // Rate terraces
   Object.keys(cities).forEach(c=>{
@@ -425,7 +516,7 @@ async function run() {
     }).sort((a,b)=>ORDER.indexOf(a.label)-ORDER.indexOf(b.label));
   });
 
-  renderTerraceMap(cities, weatherMap);
+  renderTerraceMap(cities, weatherMap, { sunSky, amsW });
 }
 
 setNow();
