@@ -50,11 +50,28 @@ export default {
     }
 
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      let details;
+      try {
+        if (ct.includes("application/json")) {
+          const j = await res.json();
+          details = j?.error?.message || j?.error || j;
+        } else {
+          const txt = await res.text();
+          details = txt ? txt.slice(0, 2000) : undefined;
+        }
+      } catch {
+        details = undefined;
+      }
       return json(
         {
           error: `Airtable error (${res.status})`,
-          details: txt ? txt.slice(0, 2000) : undefined,
+          details,
+          debug: {
+            table,
+            filterEnabled: Boolean(filter),
+            baseIdPrefix: typeof baseId === "string" ? baseId.slice(0, 3) : null,
+          },
           hint:
             res.status === 400
               ? "Check AIRTABLE_BASE_ID / AIRTABLE_TABLE / AIRTABLE_FILTER. If you used a filter, try removing it."
