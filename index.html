@@ -27,6 +27,16 @@
   .sun-banner { margin: 16px 20px; background: #18181f; border: 1px solid #2a2a3a; border-radius: 12px; padding: 16px 18px; display: none; }
   .sun-banner.visible { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .sun-icon { font-size: 28px; }
+  .sun-sky-btn {
+    font-size: 32px;
+    line-height: 1;
+    background: transparent;
+    border: none;
+    cursor: help;
+    padding: 0 4px 0 0;
+    vertical-align: middle;
+  }
+  .sun-sky-btn:focus { outline: 2px solid #f5a623; outline-offset: 2px; border-radius: 8px; }
   .sun-info { flex: 1; min-width: 160px; }
   .sun-main { font-size: 1rem; font-weight: 700; color: #f5a623; margin-bottom: 2px; }
   .sun-main.down { color: #4a4a6a; }
@@ -84,7 +94,7 @@
 </div>
 
 <div class="sun-banner" id="sun-banner">
-  <div class="sun-icon" id="sun-icon"></div>
+  <button type="button" class="sun-sky-btn" id="sun-sky-btn" title="Sky / sun amount" aria-label="Sky and sun amount">☀️</button>
   <div class="sun-info">
     <div class="sun-main" id="sun-main"></div>
     <div class="sun-detail" id="sun-detail"></div>
@@ -242,9 +252,25 @@ function weatherDesc(code, cc) {
 
 function cityName(lat, lng) {
   if (lat>52&&lat<53&&lng>4&&lng<6)  return 'Amsterdam';
-  if (lat>41&&lat<42&&lng>1&&lng<3)  return 'Barcelona';
-  if (lat>45&&lat<46&&lng>9&&lng<10) return 'Milan';
   return 'Other';
+}
+
+/** Rough bounding box: Netherlands (mainland + Wadden area) */
+function isInNetherlands(lat, lng) {
+  return lat >= 50.75 && lat <= 53.7 && lng >= 3.35 && lng <= 7.22;
+}
+
+/** Five sky levels from Amsterdam cloud cover (Open-Meteo), when sun is up */
+function sunSkyFromCloud(cloudCover, sunUp) {
+  const cc = Math.max(0, Math.min(100, Number(cloudCover) || 0));
+  if (!sunUp) {
+    return { emoji: '🌙', label: 'No daylight', fraction: '—', detail: 'Sun below horizon' };
+  }
+  if (cc >= 80) return { emoji: '☁️', label: 'Little sun', fraction: 'none', detail: `${cc}% cloud` };
+  if (cc >= 60) return { emoji: '🌥️', label: 'Some sun', fraction: '¼', detail: `${cc}% cloud` };
+  if (cc >= 40) return { emoji: '⛅', label: 'Mixed', fraction: '½', detail: `${cc}% cloud` };
+  if (cc >= 20) return { emoji: '🌤️', label: 'Mostly sunny', fraction: '¾', detail: `${cc}% cloud` };
+  return { emoji: '☀️', label: 'Full sun', fraction: 'full', detail: `${cc}% cloud` };
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -273,7 +299,7 @@ function renderTerraceMap(cities, weatherMap) {
   area.innerHTML = '<div class="map-wrap"><div id="map"></div><div class="map-legend" id="map-legend"></div></div>';
 
   const all = [];
-  ['Amsterdam','Barcelona','Milan','Other'].forEach(c => {
+  ['Amsterdam','Other'].forEach(c => {
     if (cities[c] && cities[c].length) cities[c].forEach(t => all.push({ ...t, _city: c }));
   });
 
@@ -291,13 +317,12 @@ function renderTerraceMap(cities, weatherMap) {
     `<span><span class="map-dot" style="background:${MARKER_COLORS.shaded}"></span> Shaded (${shaded})</span>` +
     `<span><span class="map-dot" style="background:${MARKER_COLORS.down}"></span> Down (${down})</span>`;
 
-  const map = L.map('map', { scrollWheelZoom: true }).setView([52.37, 4.90], 12);
+  const map = L.map('map', { scrollWheelZoom: true }).setView([52.372, 4.904], 13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(map);
 
-  const bounds = L.latLngBounds();
   all.forEach(t => {
     const color = MARKER_COLORS[t.label] || '#888';
     const m = L.circleMarker([t.lat, t.lng], {
@@ -317,10 +342,8 @@ function renderTerraceMap(cities, weatherMap) {
       (hasShade ? `<br>Building shade from ${escapeHtml(compassDir(t.shade_direction))} below ${escapeHtml(t.shade_min_altitude)}°` : '') +
       (t.description ? `<br><em>${escapeHtml(t.description)}</em>` : '');
     m.bindPopup(popup);
-    bounds.extend([t.lat, t.lng]);
   });
 
-  if (all.length) map.fitBounds(bounds.pad(0.12));
   setTimeout(() => { map.invalidateSize(); }, 150);
 }
 
@@ -342,7 +365,6 @@ async function run() {
   const {offsetHours} = localToUTC(yr, mo, dy, lh, lm);
 
   document.getElementById('sun-banner').className='sun-banner visible';
-  document.getElementById('sun-icon').textContent=sunUp?'☀️':'🌙';
   const mainEl=document.getElementById('sun-main');
   mainEl.textContent=sunUp
     ?`Amsterdam: sun from ${compassDir(amsAz)} — ${Math.round(amsAlt)}° above horizon`
@@ -367,19 +389,31 @@ async function run() {
     return;
   }
 
-  // Group by city
+  terraces = terraces.filter(t => isInNetherlands(t.lat, t.lng));
+  if (!terraces.length) {
+    document.getElementById('list-area').innerHTML =
+      '<div class="error-msg">No terraces in the Netherlands in the dataset. Add NL venues in Airtable or terraces.json.</div>';
+    document.getElementById('weather-pill').textContent='—';
+    const skyBtn = document.getElementById('sun-sky-btn');
+    skyBtn.textContent = '☀️';
+    skyBtn.title = 'No data';
+    return;
+  }
+
+  // Group by city (NL only)
   const cities={};
   terraces.forEach(t=>{ const c=cityName(t.lat,t.lng); if(!cities[c]) cities[c]=[]; cities[c].push(t); });
 
-  // Weather per city
   const isoHour=`${dp}T${String(lh).padStart(2,'0')}:00`;
-  const weatherMap={};
-  await Promise.all(Object.keys(cities).map(async c=>{
-    const s=cities[c][0];
-    weatherMap[c]=await fetchWeather(s.lat, s.lng, isoHour);
-  }));
+  const amsW = await fetchWeather(AMS.lat, AMS.lng, isoHour);
+  const weatherMap = { Amsterdam: amsW, Other: amsW };
 
-  const amsW=weatherMap['Amsterdam']||{cloudCover:0,description:'—'};
+  const sky = sunSkyFromCloud(amsW.cloudCover, sunUp);
+  const skyBtn = document.getElementById('sun-sky-btn');
+  skyBtn.textContent = sky.emoji;
+  skyBtn.title = `${sky.label} (${sky.fraction}) · ${sky.detail}`;
+  skyBtn.setAttribute('aria-label', `${sky.label}, ${sky.fraction} sun, ${sky.detail}`);
+
   document.getElementById('weather-pill').textContent=`Amsterdam: ${amsW.description} · ${amsW.cloudCover}% cloud`;
 
   // Rate terraces
