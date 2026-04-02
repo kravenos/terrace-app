@@ -42,11 +42,41 @@ If you want to host the JSON elsewhere, set this before calling `run()`:
 </script>
 ```
 
-## If you still want Airtable
+## Airtable via Cloudflare Worker (secure)
 
-Keep Airtable access **server-side** (e.g. Cloudflare Worker / Netlify function) and have the browser call *your* endpoint. That endpoint can:
+This repo includes a Worker in `worker/` that exposes:
 
-- Validate requests / rate-limit
-- Use your Airtable token safely
-- Return a sanitized JSON array in the same format as `terraces.json`
+- `GET /terraces` → returns a JSON array matching the `terraces.json` format
+
+### Deploy
+
+1. Install Wrangler and login:
+
+```bash
+npm i -g wrangler
+wrangler login
+```
+
+2. Configure the Worker:
+
+- Edit `worker/wrangler.toml` and set `AIRTABLE_TABLE` if needed.
+- Set secrets/vars (do **not** commit tokens):
+
+```bash
+cd worker
+wrangler secret put AIRTABLE_TOKEN
+wrangler secret put AIRTABLE_BASE_ID
+wrangler deploy
+```
+
+3. Point the web app at your Worker URL:
+
+Add this near the top of `index.html` (before `run()` is used), or put it in a small `<script>` tag above the main script:
+
+```html
+<script>
+  window.TERRACES_URL = "https://YOUR-WORKER.your-subdomain.workers.dev/terraces";
+</script>
+```
+
 

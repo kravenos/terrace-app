@@ -5,3 +5,7 @@
 inde_old_v1.1x.html
 index_old_v1.html
 
+# Cloudflare Worker local secrets/config
+.dev.vars
+.wrangler/
+

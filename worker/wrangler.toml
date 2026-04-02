@@ -1,0 +1,9 @@
+name = "terrace-app-api"
+main = "src/index.js"
+compatibility_date = "2026-04-02"
+
+[vars]
+# Set these in the Cloudflare dashboard as secrets/vars (see README).
+AIRTABLE_BASE_ID = ""
+AIRTABLE_TABLE = "Terraces"
+
