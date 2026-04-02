@@ -19,13 +19,75 @@ function sanitizeTerrace(fields) {
   };
 }
 
+function getClientIp(request) {
+  return (
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
+
+async function checkRateLimit(request, ctx, { maxPerMinute }) {
+  if (!maxPerMinute || maxPerMinute <= 0) return null;
+
+  const ip = getClientIp(request);
+  const minute = Math.floor(Date.now() / 60000);
+  const keyUrl = new URL(request.url);
+  keyUrl.pathname = `/__rl/${encodeURIComponent(ip)}/${minute}`;
+  keyUrl.search = "";
+  const key = new Request(keyUrl.toString(), { method: "GET" });
+
+  const cache = caches.default;
+  const existing = await cache.match(key);
+  const count = existing ? Number(await existing.text()) || 0 : 0;
+  if (count >= maxPerMinute) {
+    return json(
+      {
+        error: "Rate limited",
+        hint: `Too many requests. Try again in a minute.`,
+      },
+      {
+        status: 429,
+        headers: {
+          "retry-after": "60",
+          "cache-control": "no-store",
+        },
+      },
+    );
+  }
+
+  const next = String(count + 1);
+  const res = new Response(next, {
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      // keep the counter around slightly longer than a minute bucket
+      "cache-control": "public, max-age=70",
+    },
+  });
+  ctx.waitUntil(cache.put(key, res));
+  return null;
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return json({ ok: true });
     if (request.method !== "GET") return json({ error: "Method not allowed" }, { status: 405 });
     if (url.pathname !== "/terraces") return json({ error: "Not found" }, { status: 404 });
+
+    const rl = await checkRateLimit(request, ctx, { maxPerMinute: Number(env.RATE_LIMIT_PER_MINUTE || 60) });
+    if (rl) return rl;
+
+    // Edge-cache the final JSON response to reduce Airtable hits
+    const cache = caches.default;
+    const cacheKey = new Request(url.toString(), { method: "GET" });
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const hit = new Response(cached.body, cached);
+      hit.headers.set("x-cache", "HIT");
+      return hit;
+    }
 
     const token = env.AIRTABLE_TOKEN;
     const baseId = env.AIRTABLE_BASE_ID;
@@ -109,9 +171,12 @@ export default {
       .map((r) => sanitizeTerrace(r.fields || {}))
       .filter((t) => Number.isFinite(t.lat) && Number.isFinite(t.lng));
 
-    return json(terraces, {
+    const out = json(terraces, {
       headers: { "cache-control": "public, max-age=60" },
     });
+    out.headers.set("x-cache", "MISS");
+    ctx.waitUntil(cache.put(cacheKey, out.clone()));
+    return out;
   },
 };
 
