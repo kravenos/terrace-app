@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Example terrace (edit/remove)",
+    "lat": 52.3676,
+    "lng": 4.9041,
+    "facing": 180,
+    "shade_direction": 0,
+    "shade_min_altitude": 0,
+    "description": "Facing 180° (South). Add your real terraces here."
+  }
+]
