@@ -182,12 +182,18 @@ function rateTerrace(sunAlt, sunAz, cloudCover, facing, shadeDir, shadeMinAlt) {
 }
 
 // ── Terraces (secure by default: no API keys in frontend) ─────────────────────
-// Provide a local `terraces.json` (recommended for GitHub Pages), or set:
+// Default: Cloudflare Worker (Airtable proxy). You can override by setting:
 //   window.TERRACES_URL = 'https://…/terraces.json'
 async function fetchTerraces() {
-  const url = (window.TERRACES_URL || 'terraces.json');
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Terraces ${res.status}: could not load ${url}`);
+  const primaryUrl = window.TERRACES_URL || 'https://terrace-app-api.kravenos.workers.dev/terraces';
+  const fallbackUrl = 'terraces.json';
+
+  let res = await fetch(primaryUrl, { cache: 'no-store' });
+  if (!res.ok && primaryUrl !== fallbackUrl) {
+    res = await fetch(fallbackUrl, { cache: 'no-store' });
+  }
+  if (!res.ok) throw new Error(`Terraces ${res.status}: could not load terraces`);
+
   const data = await res.json();
   if (!Array.isArray(data)) throw new Error(`Terraces JSON must be an array`);
   return data.map(t => ({
