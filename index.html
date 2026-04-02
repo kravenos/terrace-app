@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sun Engine — Phase 1 Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e4e4ee; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+  h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7a7aaa; margin-bottom: 6px; }
+  .subtitle { font-size: 0.78rem; color: #4a4a6a; margin-bottom: 40px; font-family: monospace; }
+  .card { background: #18181f; border: 1px solid #2a2a3a; border-radius: 14px; padding: 28px; width: 100%; max-width: 480px; margin-bottom: 20px; }
+  .card-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #4a4a6a; margin-bottom: 16px; }
+  label { font-size: 0.78rem; color: #7a7aaa; margin-bottom: 4px; display: block; }
+  input[type="datetime-local"] { width: 100%; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 8px; color: #e4e4ee; font-size: 0.9rem; padding: 10px 14px; outline: none; transition: border-color 0.15s; font-family: inherit; margin-bottom: 16px; }
+  input[type="datetime-local"]:focus { border-color: #f5a623; }
+  .location-pill { display: inline-flex; align-items: center; gap: 6px; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 20px; padding: 6px 14px; font-size: 0.8rem; color: #7a7aaa; margin-bottom: 20px; }
+  .location-dot { width: 7px; height: 7px; border-radius: 50%; background: #f5a623; flex-shrink: 0; }
+  button { width: 100%; background: #f5a623; color: #1a0e00; border: none; border-radius: 8px; padding: 12px; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: opacity 0.15s; font-family: inherit; }
+  button:hover { opacity: 0.88; }
+  .result-card { background: #18181f; border: 1px solid #2a2a3a; border-radius: 14px; padding: 28px; width: 100%; max-width: 480px; display: none; }
+  .result-card.visible { display: block; }
+  .sun-status { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #2a2a3a; }
+  .status-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .status-icon.up { background: rgba(245,166,35,0.12); }
+  .status-icon.down { background: rgba(74,74,106,0.3); }
+  .status-label { font-size: 1.5rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .status-label.up { color: #f5a623; }
+  .status-label.down { color: #4a4a6a; }
+  .status-sub { font-size: 0.78rem; color: #7a7aaa; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .metric-box { background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 10px; padding: 14px; }
+  .metric-name { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: #4a4a6a; margin-bottom: 6px; }
+  .metric-value { font-size: 1.3rem; font-weight: 700; color: #e4e4ee; }
+  .compass-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
+  .compass-label { font-size: 0.68rem; color: #4a4a6a; margin-top: 8px; }
+  .section-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: #4a4a6a; margin-bottom: 12px; }
+  .terrace-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #1e1e28; font-size: 0.82rem; }
+  .terrace-row:last-child { border-bottom: none; }
+  .terrace-name { color: #c4c4dd; }
+  .terrace-facing { color: #4a4a6a; font-size: 0.72rem; }
+  .sun-pill { font-size: 0.68rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+  .sun-pill.sunny   { background: rgba(245,166,35,0.15); color: #f5a623; }
+  .sun-pill.partial { background: rgba(255,200,80,0.1);  color: #c8a040; }
+  .sun-pill.shaded  { background: rgba(74,74,106,0.2);   color: #5a5a8a; }
+  .sun-pill.down    { background: rgba(40,40,60,0.4);    color: #3a3a5a; }
+  .debug-box { margin-top: 16px; padding: 12px; background: #0f0f13; border: 1px solid #2a2a3a; border-radius: 8px; font-family: monospace; font-size: 0.7rem; color: #4a4a6a; line-height: 1.9; }
+</style>
+</head>
+<body>
+
+<h1>Terrace Sun Engine</h1>
+<p class="subtitle">phase 1 — calculation test · amsterdam</p>
+
+<div class="card">
+  <div class="card-label">Pick a date & time</div>
+  <label>When do you want to check?</label>
+  <input type="datetime-local" id="dt-picker">
+  <label>Location</label>
+  <div class="location-pill"><div class="location-dot"></div>Amsterdam, NL (52.3676° N, 4.9041° E)</div>
+  <button onclick="calculate()">Calculate sun position</button>
+</div>
+
+<div class="result-card" id="result">
+  <div class="sun-status">
+    <div class="status-icon" id="s-icon"></div>
+    <div>
+      <div class="status-label" id="s-label"></div>
+      <div class="status-sub"  id="s-sub"></div>
+    </div>
+  </div>
+  <div class="metrics">
+    <div class="metric-box"><div class="metric-name">Altitude</div><div class="metric-value" id="v-alt">—</div></div>
+    <div class="metric-box"><div class="metric-name">Azimuth</div><div class="metric-value"  id="v-az">—</div></div>
+    <div class="metric-box"><div class="metric-name">Direction</div><div class="metric-value" id="v-dir">—</div></div>
+    <div class="metric-box"><div class="metric-name">Until sunset</div><div class="metric-value" id="v-set">—</div></div>
+  </div>
+  <div class="compass-wrap">
+    <canvas id="compass" width="160" height="160"></canvas>
+    <div class="compass-label">Sun direction on compass</div>
+  </div>
+  <div class="section-label">Sample terraces — Amsterdam</div>
+  <div id="terrace-list"></div>
+  <div class="debug-box" id="debug"></div>
+</div>
+
+<script>
+const D2R = Math.PI / 180;
+const R2D = 180 / Math.PI;
+
+function sunPosition(latDeg, lngDeg, date) {
+  // Julian day count from J2000.0
+  const jd = date.getTime() / 86400000.0 + 2440587.5;
+  const n  = jd - 2451545.0;
+
+  // Mean longitude (deg) and mean anomaly (deg)
+  let L = (280.460 + 0.9856474 * n) % 360; if (L < 0) L += 360;
+  let g = (357.528 + 0.9856003 * n) % 360; if (g < 0) g += 360;
+
+  // Ecliptic longitude and obliquity
+  const lam = L + 1.915 * Math.sin(g * D2R) + 0.020 * Math.sin(2 * g * D2R);
+  const eps  = 23.439 - 0.0000004 * n;
+
+  // Right ascension (0–360 deg) and declination
+  let ra = Math.atan2(Math.cos(eps * D2R) * Math.sin(lam * D2R), Math.cos(lam * D2R)) * R2D;
+  if (ra < 0) ra += 360;
+  const dec = Math.asin(Math.sin(eps * D2R) * Math.sin(lam * D2R)) * R2D;
+
+  // Greenwich Mean Sidereal Time (deg)
+  let gmst = (280.46061837 + 360.98564736629 * n) % 360;
+  if (gmst < 0) gmst += 360;
+
+  // Local Hour Angle (0–360 deg). West of meridian = 0–180, East = 180–360
+  const lha = ((gmst + lngDeg - ra) % 360 + 360) % 360;
+
+  // Altitude (elevation above horizon)
+  const phi  = latDeg * D2R;
+  const d    = dec    * D2R;
+  const h    = lha    * D2R;
+  const sinAlt = Math.sin(phi)*Math.sin(d) + Math.cos(phi)*Math.cos(d)*Math.cos(h);
+  const alt  = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * R2D;
+
+  // Azimuth: N=0, E=90, S=180, W=270
+  const sinAz = -Math.cos(d) * Math.sin(h);
+  const cosAz =  Math.sin(d) * Math.cos(phi) - Math.cos(d) * Math.sin(phi) * Math.cos(h);
+  let az = Math.atan2(sinAz, cosAz) * R2D;
+  if (az < 0) az += 360;
+
+  return { alt, az, dec, lha, ra, gmst };
+}
+
+function findSunset(lat, lng, fromDate) {
+  let t = new Date(fromDate.getTime());
+  let prev = sunPosition(lat, lng, t).alt;
+  for (let i = 0; i < 720; i++) {
+    t = new Date(t.getTime() + 60000);
+    const a = sunPosition(lat, lng, t).alt;
+    if (prev > 0 && a <= 0) return t;
+    prev = a;
+  }
+  return null;
+}
+
+function toDir(az) {
+  return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(az/22.5)%16];
+}
+
+function sunLabel(alt, az, faceDeg) {
+  if (alt <= 0) return 'down';
+  if (alt < 5)  return 'shaded';
+  let diff = Math.abs(az - faceDeg); if (diff > 180) diff = 360 - diff;
+  if (diff <= 45) return 'sunny';
+  if (diff <= 70) return 'partial';
+  return 'shaded';
+}
+
+const TERRACES = [
+  { name:"Café de Jaren",         facing:180 },
+  { name:"Brouwerij 't IJ",       facing:270 },
+  { name:"Hannekes Boom",         facing:90  },
+  { name:"Café Kobalt",           facing:225 },
+  { name:"Pllek",                 facing:270 },
+  { name:"Rooftop A'DAM Tower",   facing:180 },
+  { name:"Bar Oldenhof",          facing:135 },
+  { name:"Canvas op de 7e",       facing:315 },
+];
+
+function drawCompass(az, alt) {
+  const c = document.getElementById('compass');
+  const ctx = c.getContext('2d');
+  const cx = 80, cy = 80;
+  ctx.clearRect(0, 0, 160, 160);
+  ctx.beginPath(); ctx.arc(cx,cy,70,0,2*Math.PI);
+  ctx.fillStyle='#0f0f13'; ctx.fill();
+  ctx.strokeStyle='#2a2a3a'; ctx.lineWidth=1; ctx.stroke();
+  ctx.font='11px monospace'; ctx.fillStyle='#4a4a6a'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('N',cx,cy-56); ctx.fillText('S',cx,cy+56); ctx.fillText('E',cx+56,cy); ctx.fillText('W',cx-56,cy);
+  if (alt <= 0) { ctx.fillText('below horizon',cx,cy); return; }
+  const angle = (az - 90) * D2R;
+  const sx = cx + 46*Math.cos(angle), sy = cy + 46*Math.sin(angle);
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(sx,sy);
+  ctx.strokeStyle='#f5a623'; ctx.lineWidth=2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx,sy,10,0,2*Math.PI);
+  ctx.fillStyle='#f5a623'; ctx.fill();
+  ctx.font='bold 11px monospace'; ctx.fillStyle='#f5a623';
+  ctx.fillText(Math.round(alt)+'°', cx, cy+20);
+}
+
+function calculate() {
+  const v = document.getElementById('dt-picker').value;
+  if (!v) { alert('Pick a date and time first.'); return; }
+  // Parse as LOCAL time to avoid UTC shift on Windows
+  const [dp, tp] = v.split('T');
+  const [yr, mo, dy] = dp.split('-').map(Number);
+  const [hr, mn]     = tp.split(':').map(Number);
+  const d = new Date(yr, mo-1, dy, hr, mn, 0);
+
+  const LAT = 52.3676, LNG = 4.9041;
+  const {alt, az, dec, lha, ra, gmst} = sunPosition(LAT, LNG, d);
+  const up  = alt > 0;
+  const dir = toDir(az);
+
+  const si = document.getElementById('s-icon');
+  const sl = document.getElementById('s-label');
+  const ss = document.getElementById('s-sub');
+  si.textContent = up ? '☀' : '🌙';
+  si.className   = 'status-icon ' + (up ? 'up' : 'down');
+  sl.textContent = up ? 'Sun is up' : 'Sun is below horizon';
+  sl.className   = 'status-label ' + (up ? 'up' : 'down');
+  ss.textContent = up ? `Shining from the ${dir} at ${Math.round(alt)}° above horizon` : 'No terraces in sun at this time';
+
+  document.getElementById('v-alt').textContent = Math.round(alt)  + '°';
+  document.getElementById('v-az').textContent  = Math.round(az)   + '°';
+  document.getElementById('v-dir').textContent = dir;
+
+  const sunset = up ? findSunset(LAT, LNG, d) : null;
+  if (sunset) {
+    const ms = sunset - d, h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
+    document.getElementById('v-set').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  } else { document.getElementById('v-set').textContent = '—'; }
+
+  drawCompass(az, alt);
+
+  const list = document.getElementById('terrace-list');
+  list.innerHTML = '';
+  TERRACES.forEach(t => {
+    const lbl = sunLabel(alt, az, t.facing);
+    const row = document.createElement('div');
+    row.className = 'terrace-row';
+    row.innerHTML = `<div><div class="terrace-name">${t.name}</div><div class="terrace-facing">Faces ${toDir(t.facing)} (${t.facing}°)</div></div><span class="sun-pill ${lbl}">${lbl}</span>`;
+    list.appendChild(row);
+  });
+
+  document.getElementById('debug').innerHTML =
+    `Local time parsed: ${d.toLocaleString()}<br>` +
+    `UTC equivalent: ${d.toUTCString()}<br>` +
+    `Declination: ${dec.toFixed(2)}° &nbsp; RA: ${ra.toFixed(2)}°<br>` +
+    `GMST: ${gmst.toFixed(2)}° &nbsp; LHA: ${lha.toFixed(2)}°<br>` +
+    `Result → Altitude: ${alt.toFixed(2)}° &nbsp; Azimuth: ${az.toFixed(2)}°`;
+
+  document.getElementById('result').className = 'result-card visible';
+}
+
+// Default to now
+const now = new Date(), pad = n => String(n).padStart(2,'0');
+document.getElementById('dt-picker').value =
+  `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+</script>
+</body>
+</html>
