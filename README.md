@@ -57,10 +57,7 @@ npm i -g wrangler
 wrangler login
 ```
 
-2. Configure the Worker:
-
-- Edit `worker/wrangler.toml` and set `AIRTABLE_TABLE` if needed.
-- Set secrets/vars (do **not** commit tokens):
+2. Configure secrets (do **not** commit tokens):
 
 ```bash
 cd worker
@@ -71,12 +68,9 @@ wrangler deploy
 
 3. Point the web app at your Worker URL:
 
-Add this near the top of `index.html` (before `run()` is used), or put it in a small `<script>` tag above the main script:
-
 ```html
 <script>
   window.TERRACES_URL = "https://YOUR-WORKER.your-subdomain.workers.dev/terraces";
 </script>
 ```
-
 

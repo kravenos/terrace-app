@@ -7,14 +7,6 @@ function json(data, init = {}) {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
-function badRequest(message) {
-  return json({ error: message }, { status: 400 });
-}
-
-function serverError(message) {
-  return json({ error: message }, { status: 500 });
-}
-
 function sanitizeTerrace(fields) {
   return {
     name: fields.name ?? fields.Name ?? "?",
@@ -31,28 +23,17 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") {
-      return json({ ok: true });
-    }
-
-    if (request.method !== "GET") {
-      return json({ error: "Method not allowed" }, { status: 405 });
-    }
-
-    // Routes:
-    // - GET /terraces → array of terrace objects
-    if (url.pathname !== "/terraces") {
-      return json({ error: "Not found" }, { status: 404 });
-    }
+    if (request.method === "OPTIONS") return json({ ok: true });
+    if (request.method !== "GET") return json({ error: "Method not allowed" }, { status: 405 });
+    if (url.pathname !== "/terraces") return json({ error: "Not found" }, { status: 404 });
 
     const token = env.AIRTABLE_TOKEN;
     const baseId = env.AIRTABLE_BASE_ID;
     const table = env.AIRTABLE_TABLE || "Terraces";
 
-    if (!token) return serverError("Missing AIRTABLE_TOKEN");
-    if (!baseId) return serverError("Missing AIRTABLE_BASE_ID");
+    if (!token) return json({ error: "Missing AIRTABLE_TOKEN" }, { status: 500 });
+    if (!baseId) return json({ error: "Missing AIRTABLE_BASE_ID" }, { status: 500 });
 
-    // Airtable API
     const airtableUrl = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}`);
     airtableUrl.searchParams.set("maxRecords", "100");
     airtableUrl.searchParams.set("filterByFormula", "{active}=1");
@@ -61,29 +42,22 @@ export default {
     try {
       res = await fetch(airtableUrl.toString(), {
         headers: { authorization: `Bearer ${token}` },
-        cf: {
-          cacheTtl: 60,
-          cacheEverything: true,
-        },
+        cf: { cacheTtl: 60, cacheEverything: true },
       });
-    } catch (e) {
-      return serverError("Failed to reach Airtable");
+    } catch {
+      return json({ error: "Failed to reach Airtable" }, { status: 502 });
     }
 
-    if (!res.ok) {
-      return serverError(`Airtable error (${res.status})`);
-    }
+    if (!res.ok) return json({ error: `Airtable error (${res.status})` }, { status: 502 });
 
     const data = await res.json();
     const records = Array.isArray(data?.records) ? data.records : [];
-    const terraces = records.map((r) => sanitizeTerrace(r.fields || {})).filter((t) => {
-      return Number.isFinite(t.lat) && Number.isFinite(t.lng);
-    });
+    const terraces = records
+      .map((r) => sanitizeTerrace(r.fields || {}))
+      .filter((t) => Number.isFinite(t.lat) && Number.isFinite(t.lng));
 
     return json(terraces, {
-      headers: {
-        "cache-control": "public, max-age=60",
-      },
+      headers: { "cache-control": "public, max-age=60" },
     });
   },
 };
