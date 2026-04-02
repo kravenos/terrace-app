@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Terras in de Zon</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e4e4ee; min-height: 100vh; padding: 0 0 60px; }
@@ -58,6 +59,15 @@
   .loading { text-align: center; padding: 60px 20px; color: #3a3a5a; font-size: 0.85rem; }
   .error-msg { margin: 20px; background: #1e1010; border: 1px solid #3a1a1a; border-radius: 10px; padding: 16px; color: #aa5a5a; font-size: 0.82rem; line-height: 1.6; }
   .empty { text-align: center; padding: 40px 20px; color: #3a3a5a; font-size: 0.85rem; }
+
+  .map-wrap { margin: 0 16px 20px; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a3a; height: min(58vh, 480px); position: relative; z-index: 1; }
+  #map { height: 100%; width: 100%; background: #13131a; }
+  .map-legend { padding: 10px 16px 14px; font-size: 0.72rem; color: #5a5a7a; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; border-top: 1px solid #1e1e28; background: #13131a; }
+  .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .map-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 0.85rem; line-height: 1.45; color: #1a1a22; }
+  .leaflet-popup-content b { color: #111; }
 </style>
 </head>
 <body>
@@ -84,10 +94,10 @@
 
 <div id="list-area"><div class="empty">Pick a time and hit "Find sunny terraces"</div></div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-  window.TERRACES_URL = "https://terrace-app-api.kravenos.workers.dev/terraces";
+  window.TERRACES_URL = window.TERRACES_URL || 'https://terrace-app-api.kravenos.workers.dev/terraces';
 </script>
- 
 <script>
 const D = Math.PI/180, R = 180/Math.PI;
 
@@ -246,6 +256,74 @@ function setNow() {
 
 const ORDER=['sunny','partial','shaded','down'];
 
+const MARKER_COLORS = { sunny: '#f5a623', partial: '#c8902a', shaded: '#6a6a9a', down: '#3a3a5a' };
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function renderTerraceMap(cities, weatherMap) {
+  const area = document.getElementById('list-area');
+  if (typeof L === 'undefined') {
+    area.innerHTML = '<div class="error-msg">Map library failed to load. Check your network and refresh.</div>';
+    return;
+  }
+  area.innerHTML = '<div class="map-wrap"><div id="map"></div><div class="map-legend" id="map-legend"></div></div>';
+
+  const all = [];
+  ['Amsterdam','Barcelona','Milan','Other'].forEach(c => {
+    if (cities[c] && cities[c].length) cities[c].forEach(t => all.push({ ...t, _city: c }));
+  });
+
+  const legend = document.getElementById('map-legend');
+  let sunny = 0, partial = 0, shaded = 0, down = 0;
+  all.forEach(t => {
+    if (t.label === 'sunny') sunny++;
+    else if (t.label === 'partial') partial++;
+    else if (t.label === 'shaded') shaded++;
+    else down++;
+  });
+  legend.innerHTML =
+    `<span><span class="map-dot" style="background:${MARKER_COLORS.sunny}"></span> Sunny (${sunny})</span>` +
+    `<span><span class="map-dot" style="background:${MARKER_COLORS.partial}"></span> Partial (${partial})</span>` +
+    `<span><span class="map-dot" style="background:${MARKER_COLORS.shaded}"></span> Shaded (${shaded})</span>` +
+    `<span><span class="map-dot" style="background:${MARKER_COLORS.down}"></span> Down (${down})</span>`;
+
+  const map = L.map('map', { scrollWheelZoom: true }).setView([52.37, 4.90], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  const bounds = L.latLngBounds();
+  all.forEach(t => {
+    const color = MARKER_COLORS[t.label] || '#888';
+    const m = L.circleMarker([t.lat, t.lng], {
+      radius: 10,
+      color: '#0f0f13',
+      weight: 2,
+      fillColor: color,
+      fillOpacity: 0.92
+    }).addTo(map);
+    const hasShade = t.shade_direction && t.shade_min_altitude;
+    const w = weatherMap[t._city] || {};
+    const popup =
+      `<b>${escapeHtml(t.name)}</b><br>` +
+      `${escapeHtml(t._city)} · ${escapeHtml(w.description || '—')} · ${w.cloudCover ?? 0}% cloud<br>` +
+      `<strong>${escapeHtml(t.label)}</strong> — ${escapeHtml(t.reason)}<br>` +
+      `Faces ${escapeHtml(compassDir(t.facing))}` +
+      (hasShade ? `<br>Building shade from ${escapeHtml(compassDir(t.shade_direction))} below ${escapeHtml(t.shade_min_altitude)}°` : '') +
+      (t.description ? `<br><em>${escapeHtml(t.description)}</em>` : '');
+    m.bindPopup(popup);
+    bounds.extend([t.lat, t.lng]);
+  });
+
+  if (all.length) map.fitBounds(bounds.pad(0.12));
+  setTimeout(() => { map.invalidateSize(); }, 150);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function run() {
   const v=document.getElementById('dt').value;
@@ -313,39 +391,7 @@ async function run() {
     }).sort((a,b)=>ORDER.indexOf(a.label)-ORDER.indexOf(b.label));
   });
 
-  // Render
-  const area=document.getElementById('list-area');
-  area.innerHTML='';
-  ['Amsterdam','Barcelona','Milan','Other'].forEach(c=>{
-    if (!cities[c]||!cities[c].length) return;
-    const w=weatherMap[c]||{cloudCover:0,description:'—'};
-    const sunnyCount=cities[c].filter(t=>t.label==='sunny').length;
-
-    const hdr=document.createElement('div');
-    hdr.className='city-section';
-    hdr.innerHTML=`${c} &nbsp;·&nbsp; ${w.description} · ${w.cloudCover}% cloud &nbsp;·&nbsp; ${sunnyCount} in sun`;
-    area.appendChild(hdr);
-
-    cities[c].forEach(t=>{
-      const hasShade=t.shade_direction&&t.shade_min_altitude;
-      const card=document.createElement('div');
-      card.className=`terrace-card ${t.label}`;
-      card.innerHTML=`
-        <div class="card-top">
-          <div>
-            <div class="card-name">${t.name}</div>
-            ${t.description?`<div class="card-desc">${t.description}</div>`:''}
-          </div>
-          <span class="status-pill ${t.label}">${t.label}</span>
-        </div>
-        <div class="card-meta">
-          <span class="meta-tag">Faces ${compassDir(t.facing)}</span>
-          <span class="meta-tag">${t.reason}</span>
-          ${hasShade?`<span class="meta-tag shade-warn">Building shade from ${compassDir(t.shade_direction)} below ${t.shade_min_altitude}°</span>`:''}
-        </div>`;
-      area.appendChild(card);
-    });
-  });
+  renderTerraceMap(cities, weatherMap);
 }
 
 setNow();
