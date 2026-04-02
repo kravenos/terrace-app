@@ -232,9 +232,19 @@ async function fetchTerraces() {
   const primaryUrl = window.TERRACES_URL || 'https://terrace-app-api.kravenos.workers.dev/terraces';
   const fallbackUrl = 'terraces.json';
 
-  let res = await fetch(primaryUrl, { cache: 'no-store' });
+  let res;
+  try {
+    res = await fetchWithTimeout(primaryUrl, {}, 15000);
+  } catch (e) {
+    if (primaryUrl === fallbackUrl) throw new Error(e.name === 'AbortError' ? 'Terraces request timed out' : String(e.message || e));
+    res = { ok: false };
+  }
   if (!res.ok && primaryUrl !== fallbackUrl) {
-    res = await fetch(fallbackUrl, { cache: 'no-store' });
+    try {
+      res = await fetchWithTimeout(fallbackUrl, {}, 15000);
+    } catch (e2) {
+      throw new Error(e2.name === 'AbortError' ? 'Terraces request timed out' : 'Could not load terraces');
+    }
   }
   if (!res.ok) throw new Error(`Terraces ${res.status}: could not load terraces`);
 
@@ -254,16 +264,31 @@ async function fetchTerraces() {
 // ── Open-Meteo ────────────────────────────────────────────────────────────────
 async function fetchWeather(lat, lng, isoDatetime) {
   const date=isoDatetime.slice(0,10);
-  const hour=parseInt(isoDatetime.slice(11,13));
+  const hour=parseInt(isoDatetime.slice(11,13), 10);
   const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloudcover,weathercode&start_date=${date}&end_date=${date}&timezone=auto`;
   try {
-    const res=await fetch(url); if (!res.ok) return {cloudCover:0, weatherCode:0, description:'N/A'};
-    const data=await res.json();
-    const idx=Math.min(hour, data.hourly.cloudcover.length-1);
-    const wc = data.hourly.weathercode[idx] ?? 0;
-    const cc = data.hourly.cloudcover[idx] ?? 0;
+    const res = await fetchWithTimeout(url, {}, 12000);
+    if (!res.ok) return {cloudCover:0, weatherCode:0, description:'N/A'};
+    const data = await res.json();
+    const hourly = data.hourly;
+    if (!hourly || !hourly.cloudcover || !hourly.cloudcover.length) {
+      return { cloudCover: 0, weatherCode: 0, description: 'N/A' };
+    }
+    const idx = Math.max(0, Math.min(hour, hourly.cloudcover.length - 1));
+    const wc = hourly.weathercode[idx] ?? 0;
+    const cc = hourly.cloudcover[idx] ?? 0;
     return { cloudCover: cc, weatherCode: wc, description: weatherDesc(wc, cc) };
   } catch { return {cloudCover:0, weatherCode:0, description:'N/A'}; }
+}
+
+async function fetchWithTimeout(url, opts = {}, ms = 15000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal, cache: 'no-store' });
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /** WMO-style emoji (Open-Meteo weather codes) — matches common OS / app icons */
@@ -341,6 +366,7 @@ function renderTerraceMap(cities, weatherMap, ctx) {
     return;
   }
   const { sunSky, amsW } = ctx;
+  const wxEmoji = weatherEmoji(amsW.weatherCode ?? 0, amsW.cloudCover ?? 0);
 
   area.innerHTML =
     '<div class="map-wrap"><div id="map"></div><div class="map-legend" id="map-legend"></div></div>' +
@@ -497,11 +523,11 @@ async function run() {
   const amsW = await fetchWeather(AMS.lat, AMS.lng, isoHour);
   const weatherMap = { Amsterdam: amsW, Other: amsW };
 
-  const sky = sunSkyFromCloud(amsW.cloudCover, sunUp);
+  const sunSky = sunSkyFromCloud(amsW.cloudCover, sunUp);
   const skyBtn = document.getElementById('sun-sky-btn');
-  skyBtn.textContent = sky.emoji;
-  skyBtn.title = `${sky.label} (${sky.fraction}) · ${sky.detail}`;
-  skyBtn.setAttribute('aria-label', `${sky.label}, ${sky.fraction} sun, ${sky.detail}`);
+  skyBtn.textContent = sunSky.emoji;
+  skyBtn.title = `${sunSky.label} (${sunSky.fraction}) · ${sunSky.detail}`;
+  skyBtn.setAttribute('aria-label', `${sunSky.label}, ${sunSky.fraction} sun, ${sunSky.detail}`);
 
   const wxPill = weatherEmoji(amsW.weatherCode ?? 0, amsW.cloudCover ?? 0);
   document.getElementById('weather-pill').textContent =
@@ -516,7 +542,12 @@ async function run() {
     }).sort((a,b)=>ORDER.indexOf(a.label)-ORDER.indexOf(b.label));
   });
 
-  renderTerraceMap(cities, weatherMap, { sunSky, amsW });
+  try {
+    renderTerraceMap(cities, weatherMap, { sunSky, amsW });
+  } catch (err) {
+    document.getElementById('list-area').innerHTML =
+      `<div class="error-msg">Could not build the map.<br>${escapeHtml(String(err && err.message ? err.message : err))}</div>`;
+  }
 }
 
 setNow();
