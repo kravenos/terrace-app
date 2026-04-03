@@ -131,8 +131,12 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   window.TERRACES_URL = window.TERRACES_URL || 'https://terrace-app-api.kravenos.workers.dev/terraces';
+  /*
+   * ShadeMap API key — request one at https://shademap.app/about/
+   * Put it ONLY in the next line, inside the quotes (replace the empty string).
+   */
+  window.SHADEMAP_API_KEY = window.SHADEMAP_API_KEY || 'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImtyYXZlbm9zQGdtYWlsLmNvbSIsImNyZWF0ZWQiOjE3NzUyMDQwMjM5NjEsImlhdCI6MTc3NTIwNDAyM30.6gp9aUpV0iSlkrfluaxHrSN0z7497zFQMfIDraFqmNM';
 </script>
-<script>
 const D = Math.PI/180, R = 180/Math.PI;
 
 function showListError(msg) {
