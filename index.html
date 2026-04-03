@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Terras in de Zon</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e4e4ee; min-height: 100vh; padding: 0 0 60px; }
@@ -74,6 +74,8 @@
   #map { height: 100%; width: 100%; background: #13131a; }
   .map-legend { padding: 10px 16px 14px; font-size: 0.72rem; color: #5a5a7a; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; border-top: 1px solid #1e1e28; background: #13131a; }
   .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .map-legend .map-shade-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: #8a8aaa; margin-left: 4px; }
+  .map-legend .map-shade-label input { accent-color: #f5a623; cursor: pointer; }
   .map-dot { width: 10px; height: 10px; border-radius: 50%; }
   .leaflet-popup-content-wrapper { border-radius: 10px; }
   .leaflet-popup-content { margin: 12px 14px; font-size: 0.85rem; line-height: 1.45; color: #1a1a22; }
@@ -128,10 +130,16 @@
 
 <div id="list-area"><div class="empty">Pick a time and hit "Find sunny terraces"</div></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   window.TERRACES_URL = window.TERRACES_URL || 'https://terrace-app-api.kravenos.workers.dev/terraces';
+  /*
+   * ShadeMap API key — request one at https://shademap.app/about/
+   * Put it ONLY in the next line, inside the quotes (replace the empty string).
+   */
+  window.SHADEMAP_API_KEY = window.SHADEMAP_API_KEY || '';
 </script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" onerror="this.onerror=null;this.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-shadow-simulator/dist/leaflet-shadow-simulator.umd.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/leaflet-shadow-simulator/dist/leaflet-shadow-simulator.umd.min.js'"></script>
 <script>
 const D = Math.PI/180, R = 180/Math.PI;
 
@@ -400,10 +408,11 @@ function escapeHtml(s) {
 function renderTerraceMap(cities, weatherMap, ctx) {
   const area = document.getElementById('list-area');
   if (typeof L === 'undefined') {
-    area.innerHTML = '<div class="error-msg">Map library failed to load. Check your network and refresh.</div>';
+    area.innerHTML =
+      '<div class="error-msg">Leaflet could not load (the map library). Try: refresh the page; disable ad-blockers for this site; use another network or DNS; if you opened the file from disk (file://), serve the folder with HTTP instead (e.g. run <code>npx serve</code> in the project folder) or use the GitHub Pages URL.</div>';
     return;
   }
-  const { sunSky, amsW } = ctx;
+  const { sunSky, amsW, shadeDate } = ctx;
   const wxEmoji = weatherEmoji(amsW.weatherCode ?? 0, amsW.cloudCover ?? 0);
 
   area.innerHTML =
@@ -427,6 +436,11 @@ function renderTerraceMap(cities, weatherMap, ctx) {
     else if (t.label === 'shaded') shaded++;
     else down++;
   });
+  const shadeKey =
+    typeof window.SHADEMAP_API_KEY === 'string' ? window.SHADEMAP_API_KEY.trim() : '';
+  const shadeWanted =
+    typeof L.shadeMap === 'function' && shadeKey.length > 0 && shadeDate instanceof Date && !isNaN(shadeDate.getTime());
+
   legend.innerHTML =
     `<span><span class="map-dot" style="background:${MARKER_COLORS.sunny}"></span> Sunny (${sunny})</span>` +
     `<span><span class="map-dot" style="background:${MARKER_COLORS.partial}"></span> Partial (${partial})</span>` +
@@ -438,6 +452,52 @@ function renderTerraceMap(cities, weatherMap, ctx) {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(map);
+
+  map.createPane('terraceMarkers');
+  map.getPane('terraceMarkers').style.zIndex = 650;
+
+  let shadeLayer = null;
+  if (shadeWanted) {
+    try {
+      shadeLayer = L.shadeMap({
+        date: shadeDate,
+        apiKey: shadeKey,
+        color: '#080814',
+        opacity: 0.48,
+        terrainSource: {
+          tileSize: 256,
+          maxZoom: 15,
+          getSourceUrl: ({ x, y, z }) =>
+            `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,
+          getElevation: ({ r, g, b }) => (r * 256 + g + b / 256) - 32768,
+        },
+      });
+      shadeLayer.addTo(map);
+      shadeLayer.setDate(shadeDate);
+    } catch (e) {
+      console.warn('ShadeMap layer failed:', e);
+      shadeLayer = null;
+    }
+  }
+
+  if (shadeLayer) {
+    const lab = document.createElement('label');
+    lab.className = 'map-shade-label';
+    lab.title = 'Terrain shadows (ShadeMap)';
+    lab.innerHTML = '<input type="checkbox" id="map-shade-toggle" checked /> Terrain shade';
+    legend.appendChild(lab);
+    const shadeToggle = lab.querySelector('#map-shade-toggle');
+    if (shadeToggle) {
+      shadeToggle.addEventListener('change', function () {
+        try {
+          if (this.checked) shadeLayer.addTo(map);
+          else shadeLayer.remove();
+        } catch (err) {
+          console.warn(err);
+        }
+      });
+    }
+  }
 
   function buildPopup(t) {
     const hasShade = t.shade_direction && t.shade_min_altitude;
@@ -457,6 +517,7 @@ function renderTerraceMap(cities, weatherMap, ctx) {
   all.forEach(t => {
     const color = MARKER_COLORS[t.label] || '#888';
     const m = L.circleMarker([t.lat, t.lng], {
+      pane: 'terraceMarkers',
       radius: 10,
       color: '#0f0f13',
       weight: 2,
@@ -590,8 +651,10 @@ async function run() {
     }).sort((a,b)=>ORDER.indexOf(a.label)-ORDER.indexOf(b.label));
   });
 
+  const shadeDate = new Date(yr, mo - 1, dy, lh, lm, 0, 0);
+
   try {
-    renderTerraceMap(cities, weatherMap, { sunSky, amsW });
+    renderTerraceMap(cities, weatherMap, { sunSky, amsW, shadeDate });
   } catch (err) {
     showListError('Could not build the map.\n' + String(err && err.message ? err.message : err));
   }
