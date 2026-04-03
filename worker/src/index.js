@@ -116,58 +116,70 @@ export default {
       );
     }
 
-    const airtableUrl = new URL(`https://api.airtable.com/v0/${baseId.trim()}/${encodeURIComponent(table)}`);
-    airtableUrl.searchParams.set("maxRecords", "100");
-    if (filter) airtableUrl.searchParams.set("filterByFormula", filter);
+    const maxPerPage = Math.min(Number(env.AIRTABLE_PAGE_SIZE || 100), 100);
+    const maxTotal = Math.min(Number(env.AIRTABLE_MAX_RECORDS || 20000), 50000);
 
-    let res;
-    try {
-      res = await fetch(airtableUrl.toString(), {
-        headers: { authorization: `Bearer ${tokenTrimmed}` },
-        cf: { cacheTtl: 60, cacheEverything: true },
-      });
-    } catch {
-      return json({ error: "Failed to reach Airtable" }, { status: 502 });
-    }
+    const allRecords = [];
+    let offset = null;
 
-    if (!res.ok) {
-      const ct = (res.headers.get("content-type") || "").toLowerCase();
-      let details;
+    for (;;) {
+      const airtableUrl = new URL(`https://api.airtable.com/v0/${baseId.trim()}/${encodeURIComponent(table)}`);
+      airtableUrl.searchParams.set("pageSize", String(maxPerPage));
+      if (filter) airtableUrl.searchParams.set("filterByFormula", filter);
+      if (offset) airtableUrl.searchParams.set("offset", offset);
+
+      let res;
       try {
-        if (ct.includes("application/json")) {
-          const j = await res.json();
-          details = j?.error?.message || j?.error || j;
-        } else {
-          const txt = await res.text();
-          details = txt ? txt.slice(0, 2000) : undefined;
-        }
+        res = await fetch(airtableUrl.toString(), {
+          headers: { authorization: `Bearer ${tokenTrimmed}` },
+        });
       } catch {
-        details = undefined;
+        return json({ error: "Failed to reach Airtable" }, { status: 502 });
       }
-      return json(
-        {
-          error: `Airtable error (${res.status})`,
-          details,
-          debug: {
-            table,
-            filterEnabled: Boolean(filter),
-            baseIdPrefix: typeof baseId === "string" ? baseId.slice(0, 3) : null,
-            tokenPrefix: tokenTrimmed ? tokenTrimmed.slice(0, 3) : null,
+
+      if (!res.ok) {
+        const ct = (res.headers.get("content-type") || "").toLowerCase();
+        let details;
+        try {
+          if (ct.includes("application/json")) {
+            const j = await res.json();
+            details = j?.error?.message || j?.error || j;
+          } else {
+            const txt = await res.text();
+            details = txt ? txt.slice(0, 2000) : undefined;
+          }
+        } catch {
+          details = undefined;
+        }
+        return json(
+          {
+            error: `Airtable error (${res.status})`,
+            details,
+            debug: {
+              table,
+              filterEnabled: Boolean(filter),
+              baseIdPrefix: typeof baseId === "string" ? baseId.slice(0, 3) : null,
+              tokenPrefix: tokenTrimmed ? tokenTrimmed.slice(0, 3) : null,
+            },
+            hint:
+              res.status === 400
+                ? "Check AIRTABLE_BASE_ID / AIRTABLE_TABLE / AIRTABLE_FILTER. If you used a filter, try removing it."
+                : res.status === 401
+                  ? "Token rejected. Re-set AIRTABLE_TOKEN and ensure it has access to this base with records:read scope."
+                  : undefined,
           },
-          hint:
-            res.status === 400
-              ? "Check AIRTABLE_BASE_ID / AIRTABLE_TABLE / AIRTABLE_FILTER. If you used a filter, try removing it."
-              : res.status === 401
-                ? "Token rejected. Re-set AIRTABLE_TOKEN and ensure it has access to this base with records:read scope."
-              : undefined,
-        },
-        { status: 502 },
-      );
+          { status: 502 },
+        );
+      }
+
+      const data = await res.json();
+      const batch = Array.isArray(data?.records) ? data.records : [];
+      allRecords.push(...batch);
+      offset = data.offset || null;
+      if (!offset || allRecords.length >= maxTotal) break;
     }
 
-    const data = await res.json();
-    const records = Array.isArray(data?.records) ? data.records : [];
-    const terraces = records
+    const terraces = allRecords
       .map((r) => sanitizeTerrace(r.fields || {}))
       .filter((t) => Number.isFinite(t.lat) && Number.isFinite(t.lng));
 

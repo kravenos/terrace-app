@@ -1,5 +1,10 @@
 *.log
 
+# Python virtual environment (local)
+Lib/
+Scripts/
+pyvenv.cfg
+
 # Keep old prototypes (contain secrets) out of git
 *old*.html
 inde_old_v1.1x.html
